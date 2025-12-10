@@ -90,6 +90,16 @@ python mhc_icc_gui.py
       - up to 16 bit fixed point precision (0-65535)
       - calibration profile to your target curve (BT.2100 PQ)
   - update desc, cprt and header part as needed.
+- ### What profile does Windows HDR Calibration tool creates?
+  - Colorant primaries rXYZ, gXYZ, bXYZ, wtpt
+    - read from your display EDID
+  - Luminance data min, peak max full frame
+    - based on user adjustment result in the app, not measured by hardware
+  - Matrix
+    - at last step of the tool "calibration", if saturation level is set to 0, then identity transform (pass-through)
+    - if you adjusted saturation level, the matrix will change accordingly
+  - 1DLUT
+    - identity transform (pass-through)
 
 ## License
 GPL-3.0-or-later. When redistributing (including EXE builds), provide full corresponding source and this license.
