@@ -9,7 +9,6 @@ from tkinter import filedialog, messagebox, ttk
 from typing import Dict, List, Tuple
 
 import numpy as np
-from colour import CCS_ILLUMINANTS, RGB_COLOURSPACES, xy_to_XYZ, xyY_to_XYZ, XYZ_to_xyY
 
 
 DEVICE_CLASSES: Dict[str, str] = {
@@ -49,6 +48,115 @@ COLOR_SPACES: Dict[str, str] = {
     "ECLR": "14 color",
     "FCLR": "15 color",
 }
+
+ILLUMINANTS: Dict[str, Tuple[float, float]] = {
+    "D50": (0.34570000584, 0.35849999729),
+    "D55": (0.33243000092, 0.34743999954),
+    "D60": (0.32161670651, 0.33761992471),
+    "D65": (0.31269998882, 0.3289999976),
+    "D75": (0.29903001216, 0.31488000081),
+}
+
+RGB_SPACE_DATA: Dict[str, Dict[str, object]] = {
+    "sRGB": {
+        "white": "D65",
+        "matrix": [
+            [0.4124, 0.3576, 0.1805],
+            [0.2126, 0.7152, 0.0722],
+            [0.0193, 0.1192, 0.9505],
+        ],
+    },
+    "ITU-R BT.709": {
+        "white": "D65",
+        "matrix": [
+            [0.4123908, 0.3575843, 0.1804808],
+            [0.2126390, 0.7151687, 0.0721923],
+            [0.0193308, 0.1191948, 0.9505321],
+        ],
+    },
+    "Adobe RGB (1998)": {
+        "white": "D65",
+        "matrix": [
+            [0.57667, 0.18556, 0.18823],
+            [0.29734, 0.62736, 0.07529],
+            [0.02703, 0.07069, 0.99134],
+        ],
+    },
+    "P3-D65": {
+        "white": "D65",
+        "matrix": [
+            [0.4865709486482162, 0.26566769316909306, 0.1982172852343625],
+            [0.2289745640697488, 0.6917385218365064, 0.079286914093745],
+            [0.0000000000000000, 0.04511338185890264, 1.043944368900976],
+        ],
+    },
+    "DCI-P3": {
+        "white": "DCI",
+        "white_xy": (0.314, 0.351),
+        "matrix": [
+            [0.445169815, 0.2771344092, 0.1722826698],
+            [0.2094916779, 0.7215952542, 0.0689130679],
+            [0.0000000000, 0.0470605601, 0.9073553944],
+        ],
+    },
+    "ITU-R BT.2020": {
+        "white": "D65",
+        "matrix": [
+            [0.6369580483012914, 0.14461690358620832, 0.1688809751641721],
+            [0.2627002120112671, 0.6779980715188708, 0.05930171646986196],
+            [0.0000000000000000, 0.028072693049087428, 1.060985057710791],
+        ],
+    },
+}
+
+def xy_to_XYZ_custom(xy: Tuple[float, float], Y: float = 1.0) -> Tuple[float, float, float]:
+    x, y = xy
+    if y == 0:
+        return (0.0, 0.0, 0.0)
+    X = (x * Y) / y
+    Z = ((1 - x - y) * Y) / y
+    return (X, Y, Z)
+
+
+def xyY_to_XYZ_custom(xyy: Tuple[float, float, float]) -> Tuple[float, float, float]:
+    x, y, Y = xyy
+    if y == 0:
+        return (0.0, 0.0, 0.0)
+    X = (x * Y) / y
+    Z = ((1 - x - y) * Y) / y
+    return (X, Y, Z)
+
+
+def XYZ_to_xyY_custom(XYZ: Tuple[float, float, float]) -> Tuple[float, float, float]:
+    X, Y, Z = XYZ
+    total = X + Y + Z
+    if total == 0:
+        return (0.0, 0.0, 0.0)
+    x = X / total
+    y = Y / total
+    return (x, y, Y)
+
+
+def rgb_primary_from_matrix(space: str, primary: str) -> Tuple[float, float, float]:
+    data = RGB_SPACE_DATA[space]
+    mat = np.asarray(data["matrix"], dtype=float)
+    if primary == "r":
+        vec = mat[:, 0]
+    elif primary == "g":
+        vec = mat[:, 1]
+    else:
+        vec = mat[:, 2]
+    return tuple(float(v) for v in vec)
+
+
+def rgb_whitepoint_xyz(space: str) -> Tuple[float, float, float]:
+    data = RGB_SPACE_DATA[space]
+    if "white_xy" in data:
+        xy = data["white_xy"]
+    else:
+        xy = ILLUMINANTS.get(data["white"], (0.31270, 0.32900))
+    return xy_to_XYZ_custom(xy)
+
 
 PCS_CHOICES: Dict[str, str] = {
     "XYZ ": "PCSXYZ",
@@ -402,10 +510,10 @@ DEFAULT_TAGS_SAMPLE: List[TagEntry] = [
     TagEntry("gTRC", "Green tone reproduction curve", "63757276000000000000000102330000"),
     TagEntry("bTRC", "Blue tone reproduction curve", "63757276000000000000000102330000"),
     TagEntry("chad", "Chromatic adaptation", "7366333200000000000100000000000000000000000000000001000000000000000000000000000000010000"),
-    TagEntry("rXYZ", "Red colorant", "58595A20000000000000699700003672000004F3"),
-    TagEntry("gXYZ", "Green colorant", "58595A200000000000005B8A0000B71400001E83"),
-    TagEntry("bXYZ", "Blue colorant", "58595A200000000000002E310000127A0000F347"),
-    TagEntry("wtpt", "Media white point", "58595A20000000000000F35200010000000116BE"),
+    TagEntry("rXYZ", "Red colorant", "58595A2000000000000069930000366D000004F1"),
+    TagEntry("gXYZ", "Green colorant", "58595A200000000000005B8C0000B71700001E84"),
+    TagEntry("bXYZ", "Blue colorant", "58595A200000000000002E350000127C0000F354"),
+    TagEntry("wtpt", "Media white point", "58595A20000000000000F35100010000000116CC"),
     TagEntry("MSCA", "Microsoft Color Adaptation", "74657874000000007B2741707076657273696F6E273A27312E302E3135322E30272C2744363541646170746564273A547275657D00"),
     TagEntry("lumi", "Luminance", "58595A2000000000005000000050000000500000"),
     TagEntry("MHC2", "Windows Advanced Color metadata", "4D4843320000000000000002000033330050000000000024000000540000006400000074000100000000000000000000000000000000000000010000000000000000000000000000000000000001000000000000736633320000000000000000000100007366333200000000000000000001000073663332000000000000000000010000"),
@@ -1819,6 +1927,25 @@ class ICCBuilderApp:
         win.title("Four Color Matrix Calculator")
         win.minsize(620, 360)
         mode_state = {"mode": "XYZ"}  # XYZ or xyY
+        win.transient(self.root)
+        win.lift()
+        win.attributes("-topmost", True)
+
+        def restore_topmost():
+            try:
+                win.attributes("-topmost", True)
+                win.lift()
+            except Exception:
+                pass
+
+        def disable_topmost_on_main_focus(_event=None):
+            try:
+                win.attributes("-topmost", False)
+            except Exception:
+                pass
+
+        self.root.bind("<FocusIn>", disable_topmost_on_main_focus, add="+")
+        win.bind("<FocusIn>", lambda e: restore_topmost())
 
         def build_table(parent, title, with_loader=False, with_quick=False):
             lf = ttk.LabelFrame(parent, text=title)
@@ -1889,13 +2016,13 @@ class ICCBuilderApp:
                     if X == 0 and Yv == 0 and Z == 0:
                         converted[i] = [0, 0, 0]
                         continue
-                    x, y, Yc = XYZ_to_xyY([X, Yv, Z])
+                    x, y, Yc = XYZ_to_xyY_custom((X, Yv, Z))
                     converted[i] = [x, y, Yc]
             elif from_mode == "xyY" and to_mode == "XYZ":
                 for i in range(arr.shape[0]):
                     x, y, Yc = arr[i]
                     try:
-                        X, Yv, Z = xyY_to_XYZ([x, y, Yc])
+                        X, Yv, Z = xyY_to_XYZ_custom((x, y, Yc))
                     except Exception:
                         X = Yv = Z = 0.0
                     converted[i] = [float(X), float(Yv), float(Z)]
@@ -1916,31 +2043,22 @@ class ICCBuilderApp:
                 return
             cs_key = {
                 "sRGB": "sRGB",
-                "Display P3": "P3-D65" if "P3-D65" in RGB_COLOURSPACES else "DCI-P3",
+                "Display P3": "P3-D65",
                 "Adobe RGB": "Adobe RGB (1998)",
                 "BT.2020": "ITU-R BT.2020",
                 "BT.709": "ITU-R BT.709",
                 "DCI-P3": "DCI-P3",
             }[choice]
-            cs = RGB_COLOURSPACES[cs_key]
-            if hasattr(cs, "matrix_RGB_to_XYZ") and cs.matrix_RGB_to_XYZ is not None:
-                mat = np.asarray(cs.matrix_RGB_to_XYZ, dtype=float)
-                w_xyz = np.asarray(xy_to_XYZ(cs.whitepoint), dtype=float)
-                w_xyz = w_xyz / (w_xyz[1] if w_xyz[1] != 0 else 1.0)
-                r_vec = mat[:, 0]
-                g_vec = mat[:, 1]
-                b_vec = mat[:, 2]
-            else:
-                w_xyz = np.asarray(xy_to_XYZ(cs.whitepoint), dtype=float)
-                w_xyz = w_xyz / (w_xyz[1] if w_xyz[1] != 0 else 1.0)
-                r_vec = np.asarray(xy_to_XYZ(cs.primaries[0]), dtype=float)
-                g_vec = np.asarray(xy_to_XYZ(cs.primaries[1]), dtype=float)
-                b_vec = np.asarray(xy_to_XYZ(cs.primaries[2]), dtype=float)
+            w_xyz = np.asarray(rgb_whitepoint_xyz(cs_key), dtype=float)
+            w_xyz = w_xyz / (w_xyz[1] if w_xyz[1] != 0 else 1.0)
+            r_vec = np.asarray(rgb_primary_from_matrix(cs_key, "r"), dtype=float)
+            g_vec = np.asarray(rgb_primary_from_matrix(cs_key, "g"), dtype=float)
+            b_vec = np.asarray(rgb_primary_from_matrix(cs_key, "b"), dtype=float)
             target_xyz = np.vstack([w_xyz, r_vec, g_vec, b_vec])
             if mode_state["mode"] == "xyY":
                 xyY_vals = []
                 for row in target_xyz:
-                    x, y, Yc = XYZ_to_xyY(row)
+                    x, y, Yc = XYZ_to_xyY_custom(tuple(row))
                     xyY_vals.append([x, y, Yc])
                 target_xyz = np.asarray(xyY_vals, dtype=float)
             fill_table(target_table["rows"], target_xyz)
@@ -1968,6 +2086,7 @@ class ICCBuilderApp:
                 for i in range(4):
                     arr[i] = vals[i]
                 fill_table(rows, arr)
+                restore_topmost()
             except Exception as exc:
                 messagebox.showerror("Load failed", f"Could not load CSV:\n{exc}")
 
@@ -1977,8 +2096,8 @@ class ICCBuilderApp:
             targ_arr = parse_table(target_table["rows"])
             # convert to XYZ for math
             if from_mode == "xyY":
-                meas_xyz = np.array([xyY_to_XYZ(row) for row in meas_arr], dtype=float)
-                targ_xyz = np.array([xyY_to_XYZ(row) for row in targ_arr], dtype=float)
+                meas_xyz = np.array([xyY_to_XYZ_custom(row) for row in meas_arr], dtype=float)
+                targ_xyz = np.array([xyY_to_XYZ_custom(row) for row in targ_arr], dtype=float)
             else:
                 meas_xyz = meas_arr
                 targ_xyz = targ_arr
@@ -2011,6 +2130,7 @@ class ICCBuilderApp:
                 popup=False,
             )
             messagebox.showinfo("Success", "Matrix calculated and updated successfully.")
+            restore_topmost()
 
         container = ttk.Frame(win)
         container.pack(fill="both", expand=True)
@@ -2134,7 +2254,7 @@ class ICCBuilderApp:
             messagebox.showerror("Invalid white level", "White level must be > 0.")
             return
         try:
-            XYZ = xyY_to_XYZ((x, y, big_y))
+            XYZ = xyY_to_XYZ_custom((x, y, big_y))
         except Exception as exc:
             messagebox.showerror("Conversion failed", str(exc))
             return
@@ -2163,40 +2283,25 @@ class ICCBuilderApp:
         sig = self.selected_tag.signature
         try:
             if choice in {"D50", "D55", "D60", "D65", "D75"}:
-                illum = CCS_ILLUMINANTS["CIE 1931 2 Degree Standard Observer"][choice]
-                xy = illum
-                XYZ = xy_to_XYZ(xy)
+                xy = ILLUMINANTS[choice]
+                XYZ = xy_to_XYZ_custom(xy)
             else:
                 cs_key = {
                     "sRGB": "sRGB",
-                    "Display P3": "P3-D65" if "P3-D65" in RGB_COLOURSPACES else "DCI-P3",
+                    "Display P3": "P3-D65",
                     "Adobe RGB": "Adobe RGB (1998)",
                     "BT.2020": "ITU-R BT.2020",
                     "BT.709": "ITU-R BT.709",
                     "DCI-P3": "DCI-P3",
                 }[choice]
-                cs = RGB_COLOURSPACES[cs_key]
-                if hasattr(cs, "matrix_RGB_to_XYZ") and cs.matrix_RGB_to_XYZ is not None:
-                    mat = np.asarray(cs.matrix_RGB_to_XYZ)
-                    if sig == "rXYZ":
-                        vec = mat[:, 0]
-                    elif sig == "gXYZ":
-                        vec = mat[:, 1]
-                    elif sig == "bXYZ":
-                        vec = mat[:, 2]
-                    else:
-                        vec = xy_to_XYZ(cs.whitepoint)
-                    XYZ = vec
+                if sig == "rXYZ":
+                    XYZ = rgb_primary_from_matrix(cs_key, "r")
+                elif sig == "gXYZ":
+                    XYZ = rgb_primary_from_matrix(cs_key, "g")
+                elif sig == "bXYZ":
+                    XYZ = rgb_primary_from_matrix(cs_key, "b")
                 else:
-                    if sig == "rXYZ":
-                        xy = cs.primaries[0]
-                    elif sig == "gXYZ":
-                        xy = cs.primaries[1]
-                    elif sig == "bXYZ":
-                        xy = cs.primaries[2]
-                    else:
-                        xy = cs.whitepoint
-                    XYZ = xy_to_XYZ(xy)
+                    XYZ = rgb_whitepoint_xyz(cs_key)
             X, Y_val, Z = [float(v) for v in XYZ]
             # For wtpt, normalize to Y=1. For primaries, preserve luminance coefficients as-is.
             if sig == "wtpt" and Y_val != 0:
@@ -2532,7 +2637,7 @@ class ICCBuilderApp:
     def show_about(self):
         msg = (
             "MHC ICC Profile Maker\n"
-            "Version: V0.81\n"
+            "Version: V0.90\n"
             "\n"
             "Build custom ICC v4 profiles with Windows Advanced Color (MHC2) data.\n"
             "Project repository: https://github.com/ttys001/MHC-ICC-Profile-Maker\n"

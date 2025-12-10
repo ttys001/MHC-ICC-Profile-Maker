@@ -7,16 +7,16 @@ Windows GUI tool for building fully customized ICC v4 profiles that include Micr
 - Tag table viewer/editor with offsets/sizes, search/add/remove/reorder, duplicate prevention.
 - Workspaces: mluc (cprt/desc), XYZ (r/g/b/wtpt), luminance, chad identity, MSCA text, MHC2 matrix+1DLUT (with CSV import, identity, previews, calculator), TRC presets (gamma/sRGB curves), raw hex view.
 - Four-color matrix calculator with XYZ/xyY switch, quick fills from standard RGB color spaces, CSV import, and least-squares solve to MHC2 matrix.
-- File menu for new profiles, loading/saving ICC/ICM files, and “About” dialog.
+- File menu for new profiles, loading/saving ICC/ICM files.
 
 ## Requirements
 - Python 3.11+ on Windows.
-- Dependencies: `pip install colour-science numpy`
+- Dependencies: `pip install numpy`.
 - Tkinter ships with standard Python on Windows.
 
 ## Running from source
 ```bash
-pip install -r requirements.txt  # or install colour-science, numpy manually
+pip install numpy  
 python mhc_icc_gui.py
 ```
 
@@ -32,12 +32,64 @@ python mhc_icc_gui.py
   - MSCA: Windows HDR Calibration v1.0.152.0 text.
   - lumi: 80 cd/m² (X=Y=Z=80).
   - MHC2: min luminance 0.2 nits, peak luminance 80 nits, identity 3×4 matrix, identity 1DLUT with two points [0,1] per channel.
-  - Tag table: offsets/sizes recomputed on build; duplicate data shared across RGB TRCs where applicable.
+
 
 ## Usage tips
 - Select a tag in the Tag Table to open its workspace; toggle Human/Hex as needed; click “Apply Changes” to persist edits to the in-memory profile.
-- MHC2 workspace: import/export matrix/LUT via CSV, apply identities, or compute a matrix in the calculator. Previews show normalized LUT samples.
+- MHC2 workspace: import matrix/LUT via CSV, apply identities, or compute a matrix in the calculator. Previews show normalized LUT values.
 - TRC workspace: apply gamma presets or sRGB standard curve; updates propagate to shared TRCs at the same offset.
+
+## SDR Profile Workflow
+- ### Legacy, No ACM (Auto Color Management)
+  - Curve rTRC, gTRC, bTRC
+    - your calibration target curve
+  - Colorant primaries rXYZ, gXYZ, bXYZ, wtpt
+    - your display EDID or measured data
+  - Luminance lumi
+  - Advanced Color tag **MHC2**
+    - min and peak luminance not required to change
+    - Matrix (3x4, last column is not used by Windows)
+      - enter values manually, or
+      - load from csv of same format, or
+      - apply default identity transform (pass-through), or
+      - use four color matrix calculator to update matrix
+      - useful for **color space proofing** e.g. source P3 to target sRGB, calculator uses least squares method
+    - 1DLUT load from csv
+      - up to 4096 LUT entries
+      - up to 16 bit fixed point precision (0-65535)
+      - calibration profile/VCGT to your target TRC
+  - update desc, cprt and header part as needed.
+- ### Advanced Color with ACM
+  - Curve rTRC, gTRC, bTRC use preset **sRGB** curve
+    - see https://github.com/dantmnf/MHC2/issues/18
+  - MHC2
+    - Matrix use default identity transform
+      - Windows will perform the color space conversion to the display's color space determined by the current default color profile.
+      - by default, all apps are restricted to the sRGB gamut because Windows tells them the display is sRGB.
+      - enable "Use legacy display ICC color management" in compatibility tab to grant the app access to entire gamut the display as specified in ICC Profile.
+    - 1DLUT
+      - calibration profile/VCGT to sRGB TRC
+  - Everything else is same as Legacy profile workflow.
+
+## HDR Profile Workflow
+- ### Advanced Color (ACM is compulsory)
+  - Colorant primaries rXYZ, gXYZ, bXYZ, wtpt
+    - your display EDID or measured data
+  - Luminance lumi
+    - max full frame luminance
+  - Advanced Color tag MHC2
+    - min and peak luminance in nits
+    - Matrix (3x4, last column is not used by Windows)
+      - enter values manually, or
+      - load from csv of same format, or
+      - apply default identity transform (pass-through), or
+      - use four color matrix calculator to update matrix
+      - useful for **color correction**, uses least squares method
+    - 1DLUT load from csv
+      - up to 4096 LUT entries
+      - up to 16 bit fixed point precision (0-65535)
+      - calibration profile to your target curve (BT.2100 PQ)
+  - update desc, cprt and header part as needed.
 
 ## License
 GPL-3.0-or-later. When redistributing (including EXE builds), provide full corresponding source and this license.
