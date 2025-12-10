@@ -2637,7 +2637,7 @@ class ICCBuilderApp:
     def show_about(self):
         msg = (
             "MHC ICC Profile Maker\n"
-            "Version: V0.90\n"
+            "Version: V0.91\n"
             "\n"
             "Build custom ICC v4 profiles with Windows Advanced Color (MHC2) data.\n"
             "Project repository: https://github.com/ttys001/MHC-ICC-Profile-Maker\n"
