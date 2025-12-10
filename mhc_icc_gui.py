@@ -396,9 +396,8 @@ KNOWN_TAG_LIBRARY: Dict[str, str] = {
     "wtpt": "Media white point",
 }
 
-# Defaults taken from NE160QDM-NM7 BASE.icc to mirror offsets, order, and content
 DEFAULT_TAGS_SAMPLE: List[TagEntry] = [
-    TagEntry("cprt", "Copyright", "6D6C756300000000000000010000000C656E5553000000480000001C0043006F007000790072006900670068007400200028004300290020004D006900630072006F0073006F0066007400200043006F00720070006F0072006100740069006F006E002E"),
+    TagEntry("cprt", "Copyright", "6D6C756300000000000000010000000C656E5553000000260000001C0043006F0070007900720069006700680074002000280043002900200055007300650072002E0000"),
     TagEntry("rTRC", "Red tone reproduction curve", "63757276000000000000000102330000"),
     TagEntry("gTRC", "Green tone reproduction curve", "63757276000000000000000102330000"),
     TagEntry("bTRC", "Blue tone reproduction curve", "63757276000000000000000102330000"),
@@ -410,7 +409,7 @@ DEFAULT_TAGS_SAMPLE: List[TagEntry] = [
     TagEntry("MSCA", "Microsoft Color Adaptation", "74657874000000007B2741707076657273696F6E273A27312E302E3135322E30272C2744363541646170746564273A547275657D00"),
     TagEntry("lumi", "Luminance", "58595A2000000000005000000050000000500000"),
     TagEntry("MHC2", "Windows Advanced Color metadata", "4D4843320000000000000002000033330050000000000024000000540000006400000074000100000000000000000000000000000000000000010000000000000000000000000000000000000001000000000000736633320000000000000000000100007366333200000000000000000001000073663332000000000000000000010000"),
-    TagEntry("desc", "Profile description", "6D6C756300000000000000010000000C656E5553000000300000002800440065006600610075006C00740020004400650076006900630065002000500072006F00660069006C0065"),
+    TagEntry("desc", "Profile description", "6D6C756300000000000000010000000C656E55530000002C0000001C00440065006600610075006C00740020004400650076006900630065002000500072006F00660069006C0065"),
 ]
 
 
@@ -482,16 +481,16 @@ class ICCBuilderApp:
         container = ttk.Frame(self.root)
         container.pack(fill="both", expand=True, padx=6, pady=6)
 
-        header_frame = ttk.Labelframe(container, text="Header Fields", width=540)
-        tags_frame = ttk.Labelframe(container, text="Tag Table", width=540)
+        header_frame = ttk.Labelframe(container, text="Header Fields", width=600)
+        tags_frame = ttk.Labelframe(container, text="Tag Table", width=500)
         editor_frame = ttk.Labelframe(container, text="Tag Workspace", width=420)
 
         header_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
         tags_frame.grid(row=0, column=1, sticky="nsew", padx=(0, 6))
         editor_frame.grid(row=0, column=2, sticky="nsew")
 
-        container.columnconfigure(0, minsize=520, weight=0)
-        container.columnconfigure(1, minsize=520, weight=0)
+        container.columnconfigure(0, minsize=560, weight=0)
+        container.columnconfigure(1, minsize=480, weight=0)
         container.columnconfigure(2, minsize=360, weight=1)
         container.rowconfigure(0, weight=1)
 
@@ -688,7 +687,7 @@ class ICCBuilderApp:
         self.tag_table.heading("offset", text="Offset")
         self.tag_table.heading("size", text="Size")
         self.tag_table.column("index", width=40, anchor="center")
-        self.tag_table.column("signature", width=240, anchor="w")
+        self.tag_table.column("signature", width=280, anchor="w")
         self.tag_table.column("offset", width=140, anchor="center")
         self.tag_table.column("size", width=140, anchor="center")
         self.tag_table.pack(fill="both", expand=True, padx=4, pady=4)
@@ -802,10 +801,9 @@ class ICCBuilderApp:
         self.mhc2_frame = ttk.Frame(self.workspace_container)
         mhc2_form = ttk.Frame(self.mhc2_frame)
         mhc2_form.pack(fill="x", pady=4)
-        ttk.Label(mhc2_form, text="ST.2086 min luminance (nits):").grid(row=0, column=0, sticky="w", padx=4, pady=2)
-        ttk.Label(mhc2_form, text="ST.2086 peak luminance (nits):").grid(row=1, column=0, sticky="w", padx=4, pady=2)
+        ttk.Label(mhc2_form, text="Min luminance (nits):").grid(row=0, column=0, sticky="w", padx=4, pady=2)
+        ttk.Label(mhc2_form, text="Peak luminance (nits):").grid(row=1, column=0, sticky="w", padx=4, pady=2)
         ttk.Label(mhc2_form, text="Max full frame luminance (nits):").grid(row=2, column=0, sticky="w", padx=4, pady=2)
-        ttk.Label(mhc2_form, text="Matrix offset:").grid(row=3, column=0, sticky="w", padx=4, pady=2)
 
         self.mhc2_min = tk.StringVar()
         self.mhc2_peak = tk.StringVar()
@@ -819,10 +817,13 @@ class ICCBuilderApp:
         ttk.Entry(mhc2_form, textvariable=self.mhc2_min, width=16).grid(row=0, column=1, sticky="w", padx=4)
         ttk.Entry(mhc2_form, textvariable=self.mhc2_peak, width=16).grid(row=1, column=1, sticky="w", padx=4)
         ttk.Entry(mhc2_form, textvariable=self.mhc2_max_full, width=16, state="disabled").grid(row=2, column=1, sticky="w", padx=4)
-        ttk.Entry(mhc2_form, textvariable=self.mhc2_matrix_off, width=16, state="disabled").grid(row=3, column=1, sticky="w", padx=4)
 
         matrix_group = ttk.LabelFrame(self.mhc2_frame, text="Matrix (3x4 XYZ->XYZ)")
         matrix_group.pack(fill="x", padx=4, pady=(8, 4))
+        offset_row = ttk.Frame(matrix_group)
+        offset_row.pack(anchor="w", padx=4, pady=(4, 2))
+        ttk.Label(offset_row, text="Matrix offset:").pack(side="left", padx=(0, 4))
+        ttk.Entry(offset_row, textvariable=self.mhc2_matrix_off, width=16, state="disabled").pack(side="left")
         matrix_table = ttk.Frame(matrix_group)
         matrix_table.pack(padx=4, pady=(2, 6), anchor="w")
         self.mhc2_matrix_vars = []
@@ -1449,7 +1450,7 @@ class ICCBuilderApp:
         self.trc_source_hex = tag.data_hex
         if info["gamma"] is not None:
             self.trc_gamma_combo.set("")  # show only user selection
-            self.trc_info.config(text=f"TRC: entry count=1 (Gamma={info['gamma']:.4f})")
+            self.trc_info.config(text=f"TRC: entry count=1 (Gamma={info['gamma']:.1f})")
         else:
             self.trc_info.config(text=f"TRC: curve (count={len(self.trc_values)})")
         self.trc_status.config(text="")
@@ -2048,7 +2049,7 @@ class ICCBuilderApp:
         # For gamma, curveType uses count=1 with u8Fixed8
         fixed = int(round(gamma_val * 256))
         self.trc_values = [fixed]
-        self.trc_info.config(text=f"TRC: entry count=1 (gamma {gamma_val:.4f})")
+        self.trc_info.config(text=f"TRC: entry count=1 (Gamma={gamma_val:.1f})")
         if self.selected_tag and self.selected_tag.signature in {"rTRC", "gTRC", "bTRC"}:
             new_hex = self.build_trc_bytes(self.trc_values).hex().upper()
             self.update_shared_trc_curves(new_hex)
@@ -2507,15 +2508,15 @@ class ICCBuilderApp:
             self.refresh_search_results()
             self.hex_text.delete("1.0", tk.END)
             self.tag_title.config(text="Select a tag to edit")
-            messagebox.showinfo("Loaded", f"Loaded ICC profile:\\n{path}")
+            messagebox.showinfo("Loaded", f"Loaded ICC profile:\n{path}")
         except Exception as exc:
-            messagebox.showerror("Load failed", f"Could not load ICC profile:\\n{exc}")
+            messagebox.showerror("Load failed", f"Could not load ICC profile:\n{exc}")
 
     def save_profile(self):
         try:
             data = self.build_profile_bytes()
         except Exception as exc:
-            messagebox.showerror("Build failed", f"Could not build ICC profile:\\n{exc}")
+            messagebox.showerror("Build failed", f"Could not build ICC profile:\n{exc}")
             return
         path = filedialog.asksaveasfilename(
             defaultextension=".icc",
@@ -2526,15 +2527,16 @@ class ICCBuilderApp:
             return
         with open(path, "wb") as f:
             f.write(data)
-        messagebox.showinfo("Saved", f"Profile saved to:\\n{path}")
+        messagebox.showinfo("Saved", f"Profile saved to:\n{path}")
 
     def show_about(self):
         msg = (
-            "MHC ICC Profile Maker\\n"
-            "Version: V0.8\\n\\n"
-            "Build custom ICC v4 profiles with Windows Advanced Color (MHC2) data.\\n"
-            "Project repository: https://github.com/your-repo/mhc-icc-profile-maker\\n"
-            "License: GPL-3.0-or-later. Redistribution requires sharing source and license.\\n"
+            "MHC ICC Profile Maker\n"
+            "Version: V0.81\n"
+            "\n"
+            "Build custom ICC v4 profiles with Windows Advanced Color (MHC2) data.\n"
+            "Project repository: https://github.com/ttys001/MHC-ICC-Profile-Maker\n"
+            "License: GPL-3.0-or-later. Redistribution requires sharing source and license.\n"
         )
         messagebox.showinfo("About", msg)
 
