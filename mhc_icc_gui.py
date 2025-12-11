@@ -1,7 +1,9 @@
 import hashlib
+import io
 import re
 import struct
 import tkinter as tk
+import webbrowser
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1811,8 +1813,14 @@ class ICCBuilderApp:
             return
         try:
             import csv
-            with open(path, "r", encoding="utf-8-sig") as f:
-                rows = list(csv.reader(f))
+            with open(path, "r", encoding="utf-8-sig", newline="") as f:
+                data = f.read()
+            sample = data[:2048]
+            try:
+                dialect = csv.Sniffer().sniff(sample, delimiters=",;\\t")
+            except Exception:
+                dialect = csv.excel
+            rows = list(csv.reader(io.StringIO(data), dialect))
             flat = []
             for row in rows:
                 for cell in row:
@@ -1864,12 +1872,18 @@ class ICCBuilderApp:
             import csv
 
             rows = []
-            with open(path, "r", encoding="utf-8") as f:
-                reader = csv.reader(f)
-                for row in reader:
-                    if not row:
-                        continue
-                    rows.append(row)
+            with open(path, "r", encoding="utf-8-sig", newline="") as f:
+                data = f.read()
+            sample = data[:2048]
+            try:
+                dialect = csv.Sniffer().sniff(sample, delimiters=",;\\t")
+            except Exception:
+                dialect = csv.excel
+            reader = csv.reader(io.StringIO(data), dialect)
+            for row in reader:
+                if not row:
+                    continue
+                rows.append(row)
             values_r, values_g, values_b = [], [], []
             for row in rows:
                 if len(row) < 3:
@@ -2073,13 +2087,29 @@ class ICCBuilderApp:
             try:
                 import csv
 
-                with open(path, "r", encoding="utf-8-sig") as f:
-                    reader = csv.reader(f)
-                    vals = []
-                    for row in reader:
-                        if not row:
-                            continue
-                        vals.append([float(cell.strip()) for cell in row[:3]])
+                with open(path, "r", encoding="utf-8-sig", newline="") as f:
+                    data = f.read()
+                sample = data[:2048]
+                try:
+                    dialect = csv.Sniffer().sniff(sample, delimiters=",;\\t")
+                except Exception:
+                    dialect = csv.excel
+                reader = csv.reader(io.StringIO(data), dialect)
+                vals = []
+                for row in reader:
+                    if not row:
+                        continue
+                    first3 = row[:3]
+                    cleaned = [cell.strip() for cell in first3]
+                    if any(c == "" for c in cleaned):
+                        continue
+                    try:
+                        parsed = [float(c) for c in cleaned]
+                    except Exception:
+                        continue
+                    vals.append(parsed)
+                    if len(vals) >= 4:
+                        break
                 if len(vals) < 4:
                     raise ValueError("Need 4 rows (W,R,G,B).")
                 arr = np.zeros((4, 3), dtype=float)
@@ -2635,15 +2665,34 @@ class ICCBuilderApp:
         messagebox.showinfo("Saved", f"Profile saved to:\n{path}")
 
     def show_about(self):
-        msg = (
-            "MHC ICC Profile Maker\n"
-            "Version: V0.91\n"
-            "\n"
-            "Build custom ICC v4 profiles with Windows Advanced Color (MHC2) data.\n"
-            "Project repository: https://github.com/ttys001/MHC-ICC-Profile-Maker\n"
-            "License: GPL-3.0-or-later. Redistribution requires sharing source and license.\n"
+        about_win = tk.Toplevel(self.root)
+        about_win.title("About")
+        about_win.resizable(False, False)
+        ttk.Label(about_win, text="MHC ICC Profile Maker", font=("Segoe UI", 11, "bold")).pack(padx=10, pady=(10, 4))
+        ttk.Label(about_win, text="Version: V0.92").pack(padx=10, pady=2)
+        ttk.Label(about_win, text="Build custom ICC v4 profiles with Windows Advanced Color (MHC2) data.").pack(
+            padx=10, pady=2
         )
-        messagebox.showinfo("About", msg)
+
+        link = ttk.Label(
+            about_win,
+            text="Project repository: https://github.com/ttys001/MHC-ICC-Profile-Maker",
+            foreground="blue",
+            cursor="hand2",
+        )
+        link.pack(padx=10, pady=4)
+        link.bind(
+            "<Button-1>",
+            lambda e: webbrowser.open_new("https://github.com/ttys001/MHC-ICC-Profile-Maker"),
+        )
+
+        ttk.Label(
+            about_win,
+            text="License: GPL-3.0-or-later. Redistribution requires sharing source and license.",
+            wraplength=420,
+        ).pack(padx=10, pady=(0, 10))
+
+        ttk.Button(about_win, text="Close", command=about_win.destroy).pack(pady=(0, 10))
 
 
 def main():

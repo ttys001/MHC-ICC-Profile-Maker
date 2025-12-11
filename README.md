@@ -8,6 +8,10 @@ Windows GUI tool for building fully customized ICC v4 profiles that include Micr
 - Tag table viewer/editor with offsets/sizes
 - Workspaces for editing tags, with switch between human and raw hex view
 - Four-color matrix calculator for  MHC2 matrix
+- Check out the sample folder for calibration report and MHC ICC for both SDR and HDR displays created with the tool
+  - [HDR Example: MSI MPG 272URX QD-OLED](samples/MSI%20MPG%20272URX%20Calibration%20Report.md)
+  - [SDR Example 1: BOE NE160QDM-NX2](samples/NE160QDM-NX2%20Calibration%20Report.md)
+  - [SDR Example 2: BOE NE160QDM-NM7](samples/NE160QDM-NM7%20Calibration%20Report.md)
 
 ## Requirements
 
@@ -53,16 +57,16 @@ python mhc_icc_gui.py
   - Curve rTRC, gTRC, bTRC
     - your calibration target curve
   - Colorant primaries rXYZ, gXYZ, bXYZ, wtpt
-    - your display EDID or measured data
+    - your target color space or measured data
   - Luminance lumi
   - Advanced Color tag **MHC2**
-    - min and peak luminance not required to change
+    - min and peak luminance not required to update
     - Matrix (3x4, last column is not used by Windows)
       - enter values manually, or
       - load from csv of same format, or
       - apply default identity transform (pass-through), or
       - use four color matrix calculator to update matrix (least squares method)
-      - useful for **color space proofing** e.g. source P3 to target sRGB, and **color correction**
+      - useful for **color space proofing** e.g. source P3 to target sRGB
     - 1DLUT load from csv
       - up to 4096 LUT entries
       - up to 16 bit fixed point precision (0-65535)
@@ -73,10 +77,12 @@ python mhc_icc_gui.py
 
   - Curve rTRC, gTRC, bTRC use preset **sRGB** curve
     - see https://github.com/dantmnf/MHC2/issues/18
+  - Colorant primaries rXYZ, gXYZ, bXYZ, wtpt
+    - your measured native data
   - Advanced Color tag **MHC2**
     - Matrix use default identity transform
       - Windows will perform the color space conversion to the display's color space determined by the current default color profile.
-      - by default, all apps are restricted to the sRGB gamut because Windows tells them the display is sRGB.
+      - by default, all apps are restricted to the sRGB gamut because Windows tells them the display is sRGB only.
       - enable "Use legacy display ICC color management" in compatibility tab to grant the app access to the entire gamut of the display as specified in ICC Profile.
     - 1DLUT
       - calibration profile/VCGT to sRGB TRC
