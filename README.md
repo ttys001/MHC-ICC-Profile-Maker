@@ -135,12 +135,32 @@ python mhc_icc_gui.py
      - Source: Power-Troubleshooter
      - Event ID: 1
 
-- ### My ICC profile/Advanced Color Management is not working for apps in full screen mode
+- ### Is the MHC ICC calibration bypassed in full-screen applications?
+  
+  More specifically: is it bypassed when the application’s present mode is set to **Hardware Independent Flip** (Direct Flip)?
 
-  - Some apps (e.g. games) bypass Windows color management in full screen mode, bacause they switched Present Mode into Hardware - Independent Flip. What you can do:
-    1. Disable MPO (Multi Plane Overlay), to prevent large window size trigger Independent Flip
-    2. Run the app in windowed/borderless windowed mode
-    3. Enable "Use legacy display ICC color management" in compatibility to force Composed Flip mode by DWM
+  - In full-screen mode, applications or games may bypass the Desktop Window Manager (DWM) by switching the present mode to Hardware Independent Flip
+  - However, the hardware display color calibration pipeline (MHC ICC) is not bypassed
+  
+  Key points:
+    - Independent/Direct Flip bypasses the DWM, but not the display kernel
+    - The calibration pipeline operates after the DWM or full-screen application sends the frame buffer to the display kernel
+    - The pipeline exists at a lower, system-wide level, ensuring calibration is consistently applied
+
+- ### Niche Scenario: HDR Tonemapping Behavior
+ 
+  The MSI 272URX monitor implements a "smart" tonemapping mechanism that automatically enables **HGiG**/source-based tonemapping when ST 2086 HDR metadata is present
+
+  - HDR10 without metadata → The monitor defaults to HGiG, clipping highlights at its maximum brightness capability
+  - HDR10 with metadata → The monitor applies its internal tonemapping algorithm, using MaxCLL values
+  - Independent flip mode → Some applications (e.g., MPV, VESA DisplayHDR Compliance Tests) send HDR10 metadata directly to the display kernel, which then forwards it to the display device
+  - Desktop Window Manager (DWM) → In windowed mode, DWM strips HDR metadata from windowed apps (composed flip), and sends only the frame buffer without metadata
+  - [dogegen](https://github.com/ledoge/dogegen) by default does not set metadata in swapchain, but it can be configured to send user input HDR10 metadata. Basically, please keep your display's tonemapping setting consistent with the setting used for calibration.
+
+  Best Practices for Accuracy:
+  - Use full-screen windowed mode (composed flip) to avoiding bypassing DWM → HGiG mode 
+  - Ensure apps/games provide HDR10 metadata correctly aligned with your display’s capabilities → Monitor applies passthrough tonemapping 
+  - Example: In MPV Player, set target-peak to auto or to the measured peak brightness of your display. This prevents double tonemapping caused by the monitor’s mechanism
   
 ## License
 
