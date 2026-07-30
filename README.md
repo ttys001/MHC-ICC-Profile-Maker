@@ -1,171 +1,124 @@
 # MHC ICC Profile Maker
 
-Windows GUI tool for building fully customized ICC v4 profiles that include Microsoft’s Advanced Color (MHC2) metadata. It provides human-friendly editors for header fields, tag tables, localized text, XYZ colorants, TRCs, luminance, MHC2 matrices/LUTs, and more. Default profiles load with sRGB primaries, D65 white, gamma 2.2 TRCs, and identity transforms for chad/MHC2.
+English | [简体中文](README_ZH.md)
+
+Windows GUI for building and editing ICC v4 display profiles with Microsoft Hardware Calibration (`MHC2`) metadata. It provides structured editors for the ICC header, tag table, localized text, XYZ colorants, TRCs, luminance, and MHC2 matrix/1D LUT data, while retaining a raw hexadecimal view.
 
 ## Features
 
-- Header editor
-- Tag table viewer/editor with offsets/sizes
-- Workspaces for editing tags, with switch between human and raw hex view
-- Four-color matrix calculator for  MHC2 matrix
-- Check out the sample folder for calibration report and MHC ICC for both SDR and HDR displays created with the tool
-  - [HDR Example: MSI MPG 272URX QD-OLED](samples/MSI%20MPG%20272URX%20Calibration%20Report.md)
-  - [SDR Example 1: BOE NE160QDM-NX2](samples/NE160QDM-NX2%20Calibration%20Report.md)
-  - [SDR Example 2: BOE NE160QDM-NM7](samples/NE160QDM-NM7%20Calibration%20Report.md)
+- Create, load, edit, validate, and atomically save ICC v4 display profiles.
+- Edit common tags through dedicated workspaces or raw hexadecimal data.
+- Import 3×3/3×4 matrices and RGB 1D LUTs from CSV.
+- Calculate a four-color least-squares correction matrix from W/R/G/B measurements.
+- Run without third-party Python packages; NumPy is not required.
+- Use the included SDR and HDR profiles and reports as practical examples.
+
+## Download
+
+Download the current Windows executable from [GitHub Releases](https://github.com/ttys001/MHC-ICC-Profile-Maker/releases).
 
 ## Requirements
 
-- Python 3.11+ on Windows.
-- No third-party runtime packages. Tkinter ships with standard Python on Windows.
+- Windows and Python 3.11+ with Tkinter to run from source.
+- Windows 10, version 2004 or later, a supported GPU, and WDDM 2.6+ to apply the MHC hardware calibration pipeline. Some GPUs require a newer driver.
+- Windows 11 for the Windows HDR Calibration app. Advanced Color feature availability also depends on the Windows version and hardware.
+- PyInstaller is needed only when building an executable.
 
-## Binary release
+## Run, test, and build
 
-Download the latest release EXE from the [Releases](https://github.com/ttys001/MHC-ICC-Profile-Maker/releases).
-
-## Running from source
-
-```bash
+```powershell
 python mhc_icc_gui.py
+python -S -m unittest -v
 ```
 
-Run the stdlib verification suite with `python -m unittest -v`.
+Build the optimized single-file Windows executable:
 
-## Default profile (File → New Profile)
+```powershell
+python -m PyInstaller --noconfirm --clean --onefile --windowed --optimize 2 --name "MHC-ICC-Profile-Maker_v0.93" mhc_icc_gui.py
+```
 
-- Header: ICC v4, device class mntr, RGB space, PCS XYZ, platform MSFT, rendering intent media-relative colorimetric, creation time set on save, profile size/ID auto-managed.
-- Tag set: cprt, rTRC, gTRC, bTRC, chad, rXYZ, gXYZ, bXYZ, wtpt, MSCA, lumi, MHC2, desc.
-- Tag content (human values):
-  - cprt: “Copyright (C) User.”
-  - desc: “Default Device Profile.”
-  - TRCs (r/g/b): gamma 2.2 (curve count=1).
-  - Colorants: sRGB primaries (red, green, blue XYZ per sRGB) and wtpt: D65 normalized to Y=1.
-  - chad: identity matrix.
-  - MSCA: Windows HDR Calibration v1.0.152.0 text.
-  - lumi: 80 cd/m² (X=Y=Z=80).
-  - MHC2: min luminance 0.2 nits, peak luminance 80 nits, with the optional matrix and 1DLUT omitted to request the identity transforms defined by Microsoft.
+## Quick workflow
 
-## Usage tips
+1. Choose **File → New Profile** or **File → Load ICC…**.
+2. Select a tag, edit it in Human or Hex mode, and choose **Apply Changes**.
+3. Save the profile. The app updates the creation time, profile size, and ICC profile ID.
+4. Validate the result on the target Windows system and display before relying on it.
 
-- Select a tag in the Tag Table to open its workspace; toggle Human/Hex as needed; click “Apply Changes” to persist edits to the in-memory profile.
-- MHC2 workspace: import a 3×3 or 3×4 matrix and an RGB LUT via CSV, apply identities, or compute a matrix in the calculator. Comment lines beginning with `#` are accepted. Previews show normalized LUT values.
-- TRC workspace: apply gamma presets or sRGB standard curve; updates propagate to shared TRCs at the same offset.
+## CSV input
 
-## SDR Profile Workflow
+- Matrix: three numeric rows with either three or four columns. Windows stores a 3×4 matrix but ignores the fourth column.
+- RGB 1D LUT: 1–4096 rows with R, G, and B columns.
+- LUT values may be normalized `0–1`, or integer-domain `0–255`, `0–1023`, `0–4095`, or `0–65535`; the app normalizes them to `0–1`.
+- Commas, semicolons, and tabs are accepted. Lines beginning with `#` are comments.
+- The matrix calculator accepts four W/R/G/B rows in either xyY or XYZ form.
 
-- ### Legacy, No ACM (Auto Color Management)
+## Default profile
 
-  - Curve rTRC, gTRC, bTRC
-    - your calibration target curve
-  - Colorant primaries rXYZ, gXYZ, bXYZ, wtpt
-    - your target color space or measured data
-  - Luminance lumi
-  - Advanced Color tag **MHC2**
-    - min and peak luminance not required to update
-    - Matrix (3x4, last column is not used by Windows)
-      - enter values manually, or
-      - load from csv of same format, or
-      - apply default identity transform (pass-through), or
-      - use four color matrix calculator to update matrix (least squares method)
-      - useful for **color space proofing** e.g. source P3 to target sRGB
-    - 1DLUT load from csv
-      - up to 4096 LUT entries
-      - up to 16 bit fixed point precision (0-65535)
-      - calibration profile/VCGT to your target TRC
-  - update desc, cprt and header part as needed.
+**File → New Profile** creates:
 
-- ### Advanced Color with ACM
+| Area | Default |
+| --- | --- |
+| Header | ICC v4 display profile (`mntr`), RGB, PCS XYZ, platform `MSFT`, media-relative colorimetric intent |
+| Tag set | `cprt`, `rTRC`, `gTRC`, `bTRC`, `chad`, `rXYZ`, `gXYZ`, `bXYZ`, `wtpt`, `MSCA`, `lumi`, `MHC2`, `desc` |
+| Color | sRGB primaries, D65 white normalized to Y=1, identity `chad` |
+| TRCs | Shared gamma 2.2 `curveType` data |
+| Luminance | `lumi` = 80 nits; MHC2 minimum = 0.2 nits and peak = 80 nits |
+| MHC2 transforms | Matrix and 1D LUT omitted with zero offsets, which Windows defines as identity transforms |
+| Text | `Copyright (C) User.` and `Default Device Profile` |
+| MSCA | `{'Appversion':'1.0.152.0','D65Adapted':True}` |
 
-  - Curve rTRC, gTRC, bTRC use preset **sRGB** curve
-    - see https://github.com/dantmnf/MHC2/issues/18
-  - Colorant primaries rXYZ, gXYZ, bXYZ, wtpt
-    - your measured native data
-  - Advanced Color tag **MHC2**
-    - Matrix use default identity transform
-      - Windows will perform the color space conversion to the display's color space determined by the current default color profile.
-      - by default, all apps are restricted to the sRGB gamut because Windows tells them the display is sRGB only.
-      - enable "Use legacy display ICC color management" in compatibility tab to grant the app access to the entire gamut of the display as specified in ICC Profile.
-    - 1DLUT
-      - calibration profile/VCGT to sRGB TRC
-  - Everything else is same as Legacy profile workflow.
+The MSCA app version was checked against Microsoft’s live Store catalog on 2026-07-30 and matches Windows HDR Calibration `1.0.152.0`. MSCA is a private Microsoft tag; changing only its version string does not reproduce another app version’s behavior.
 
-## HDR Profile Workflow
+## Essential MHC2 rules
 
-- ### Advanced Color (ACM is compulsory)
+- A usable MHC profile needs valid ST.2086 metadata: RGB primaries, white point, maximum full-frame luminance, minimum luminance, and peak luminance. Treat defaults as placeholders for the target display.
+- The matrix is stored as 3×4 in row-major order, but Windows uses only the left three columns. Do not include source RGB→XYZ or XYZ→target RGB conversions; the display driver supplies them.
+- The MHC2 1D LUT is a calibration adjustment applied after the wire-format transfer function. Do not encode an sRGB, gamma, or PQ transfer function into it.
+- A zero matrix offset, or a zero LUT entry count with all three LUT offsets set to zero, explicitly requests an identity transform.
+- Hardware can support fewer entries or less precision than the profile contains; Windows interpolates to the hardware-supported LUT size.
 
-  - Colorant primaries rXYZ, gXYZ, bXYZ, wtpt
-    - your display EDID or measured data
-  - Luminance lumi
-    - max full frame luminance
-  - Advanced Color tag **MHC2**
-    - min and peak luminance in nits
-    - Matrix (3x4, last column is not used by Windows)
-      - enter values manually, or
-      - load from csv of same format, or
-      - apply default identity transform (pass-through), or
-      - use four color matrix calculator to update matrix (least squares method)
-      - useful for **color correction**
-    - 1DLUT load from csv
-      - up to 4096 LUT entries
-      - up to 16 bit fixed point precision (0-65535)
-      - calibration profile to your target curve (BT.2100 PQ)
-  - update desc, cprt and header part as needed.
+## Workflow guidance
 
-- ### What profile does Windows HDR Calibration App creates?
+### Legacy SDR
 
-  - Colorant primaries rXYZ, gXYZ, bXYZ, wtpt
-    - read from your display EDID
-  - Luminance data min, peak, and max full frame
-    - based on user adjustment result in the app, not measured by hardware
-  - Matrix
-    - at last step of the "calibration" app, if saturation level is set to 0, identity transform applies (pass-through)
-    - if you adjusted saturation level, the matrix will change accordingly
-  - 1DLUT
-    - identity transform (pass-through)
-  - MSCA
-    - Windows HDR Calibration App version and settings
+Use suitable ICC TRCs and colorants for the target color space. Use the MHC2 matrix for intentional XYZ adjustments such as color-space proofing or measured correction. Use the 1D LUT for post-transfer-function calibration, and enter valid luminance metadata.
+
+### SDR with Advanced Color / ACM
+
+Use measured native primaries and valid luminance metadata. Windows performs source-to-display color conversion using the active display profile. On Windows 11, legacy ICC-profile-based apps are limited to sRGB behavior unless the per-app **Use legacy display ICC color management** compatibility helper is enabled.
+
+### HDR
+
+Use measured or reliable display primaries/white point, store maximum full-frame luminance in `lumi`, and store minimum/peak luminance in `MHC2`. Use the matrix for intentional XYZ adjustment or measured correction, and the 1D LUT for post-transfer-function calibration. Identity is valid when no adjustment is required.
+
+The reference profiles in this repository carry the same Windows HDR Calibration `1.0.152.0` MSCA string. MSCA is private, so these examples should not be treated as a promise that future app versions will use the same data.
+
+## Samples
+
+- [HDR: MSI MPG 272URX QD-OLED](samples/MSI%20MPG%20272URX%20Calibration%20Report.md)
+- [SDR: BOE NE160QDM-NX2](samples/NE160QDM-NX2%20Calibration%20Report.md)
+- [SDR: BOE NE160QDM-NM7](samples/NE160QDM-NM7%20Calibration%20Report.md)
 
 ## Troubleshooting
 
-- ### My ICC profile/Advanced Color Management is not working after waking from sleep
+### Calibration is not restored after sleep
 
-  1. Open Task Scheduler, navigate to "Calibration Loader" task under Microsoft → Windows → WindowsColorSystem
-  2. Edit properties, check "Run with highest privileges"
-  3. In Triggers tab, add a new trigger "On an event"
-     - Log: System
-     - Source: Power-Troubleshooter
-     - Event ID: 1
+As a workaround, open Task Scheduler and inspect **Microsoft → Windows → WindowsColorSystem → Calibration Loader**. Enable **Run with highest privileges** and add an **On an event** trigger for System log, source `Power-Troubleshooter`, event ID `1`.
 
-- ### Is the MHC ICC calibration bypassed in full-screen applications?
-  
-  More specifically: is it bypassed when the application’s present mode is set to **Hardware Independent Flip** (Direct Flip)?
+### Full-screen and independent flip
 
-  - In full-screen mode, applications or games may bypass the Desktop Window Manager (DWM) by switching the present mode to Hardware Independent Flip
-  - However, the hardware display color calibration pipeline (MHC ICC) is not bypassed
-  
-  Key points:
-    - Independent/Direct Flip bypasses the DWM, but not the display kernel
-    - The calibration pipeline operates after the DWM or full-screen application sends the frame buffer to the display kernel
-    - The pipeline exists at a lower, system-wide level, ensuring calibration is consistently applied
+MHC calibration is loaded by the Windows display calibration pipeline; it is not a DWM shader. Do not infer the actual presentation path from “windowed,” “borderless,” or “full-screen” labels: a windowed flip-model application can be promoted to independent flip. HDR metadata and monitor tone mapping are separate, device-specific concerns.
 
-- ### Niche Scenario: HDR Tonemapping Behavior
- 
-  The MSI 272URX monitor implements a "smart" tonemapping mechanism that automatically enables **HGiG**/source-based tonemapping when ST 2086 HDR metadata is present
+The tone-mapping notes for the MSI MPG 272URX apply only to the tested monitor firmware and settings; see its [calibration report](samples/MSI%20MPG%20272URX%20Calibration%20Report.md).
 
-  - HDR10 without metadata → The monitor defaults to HGiG, clipping highlights at its maximum brightness capability
-  - HDR10 with metadata → The monitor applies its internal tonemapping algorithm, using MaxCLL values
-  - Independent flip mode → Some applications (e.g., MPV, VESA DisplayHDR Compliance Tests) send HDR10 metadata directly to the display kernel, which then forwards it to the display device
-  - Desktop Window Manager (DWM) → In windowed mode, DWM strips HDR metadata from windowed apps (composed flip), and sends only the frame buffer without metadata
-  - [dogegen](https://github.com/ledoge/dogegen) by default does not set metadata in swapchain, but it can be configured to send user input HDR10 metadata. Basically, please keep your display's tonemapping setting consistent with the setting used for calibration.
+## References
 
-  Best Practices for Accuracy:
-  - Use full-screen windowed mode (composed flip) to avoiding bypassing DWM → HGiG mode 
-  - Ensure apps/games provide HDR10 metadata correctly aligned with your display’s capabilities → Monitor applies passthrough tonemapping 
-  - Example: In MPV Player, set target-peak to auto or to the measured peak brightness of your display. This prevents double tonemapping caused by the monitor’s mechanism
-  
+- [Windows hardware display color calibration pipeline](https://learn.microsoft.com/en-us/windows/win32/wcs/display-calibration-mhc)
+- [ICC profile behavior with Advanced Color](https://learn.microsoft.com/en-us/windows/win32/wcs/advanced-color-icc-profiles)
+- [Windows HDR Calibration](https://apps.microsoft.com/detail/9N7F2SM5D1LR)
+- [DXGI flip-model guidance](https://learn.microsoft.com/en-us/windows/win32/direct3ddxgi/for-best-performance--use-dxgi-flip-model)
+- [ICC profile specification](references/ICC.1-2022-05.pdf)
+
 ## License
 
-GPL-3.0-or-later. When redistributing (including EXE builds), provide full corresponding source and this license.
-
-## Repository
-
-Project home: https://github.com/ttys001/MHC-ICC-Profile-Maker
+GPL-3.0-or-later. Redistribution, including executable builds, must include the corresponding source and license.

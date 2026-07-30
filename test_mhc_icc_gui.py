@@ -36,6 +36,10 @@ class ProfileMakerTests(unittest.TestCase):
         by_signature = {tag.signature: tag for tag in tags}
         self.assertEqual(by_signature["rTRC"].size(), 14)
         self.assertEqual(by_signature["MHC2"].size(), 36)
+        self.assertEqual(
+            self.app.parse_text_type(by_signature["MSCA"].data_bytes()),
+            "{'Appversion':'1.0.152.0','D65Adapted':True}",
+        )
         mhc2 = self.app.parse_mhc2(by_signature["MHC2"].data_bytes())
         self.assertEqual(mhc2["lut_entries"], 0)
         self.assertEqual(mhc2["matrix_off"], 0)
