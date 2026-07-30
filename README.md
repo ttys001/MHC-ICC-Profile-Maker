@@ -16,8 +16,7 @@ Windows GUI tool for building fully customized ICC v4 profiles that include Micr
 ## Requirements
 
 - Python 3.11+ on Windows.
-- Dependencies: `pip install numpy`.
-- Tkinter ships with standard Python on Windows.
+- No third-party runtime packages. Tkinter ships with standard Python on Windows.
 
 ## Binary release
 
@@ -26,9 +25,10 @@ Download the latest release EXE from the [Releases](https://github.com/ttys001/M
 ## Running from source
 
 ```bash
-pip install numpy  
 python mhc_icc_gui.py
 ```
+
+Run the stdlib verification suite with `python -m unittest -v`.
 
 ## Default profile (File → New Profile)
 
@@ -42,12 +42,12 @@ python mhc_icc_gui.py
   - chad: identity matrix.
   - MSCA: Windows HDR Calibration v1.0.152.0 text.
   - lumi: 80 cd/m² (X=Y=Z=80).
-  - MHC2: min luminance 0.2 nits, peak luminance 80 nits, identity 3×4 matrix, identity 1DLUT with two points [0,1] per channel.
+  - MHC2: min luminance 0.2 nits, peak luminance 80 nits, with the optional matrix and 1DLUT omitted to request the identity transforms defined by Microsoft.
 
 ## Usage tips
 
 - Select a tag in the Tag Table to open its workspace; toggle Human/Hex as needed; click “Apply Changes” to persist edits to the in-memory profile.
-- MHC2 workspace: import matrix/LUT via CSV, apply identities, or compute a matrix in the calculator. Previews show normalized LUT values.
+- MHC2 workspace: import a 3×3 or 3×4 matrix and an RGB LUT via CSV, apply identities, or compute a matrix in the calculator. Comment lines beginning with `#` are accepted. Previews show normalized LUT values.
 - TRC workspace: apply gamma presets or sRGB standard curve; updates propagate to shared TRCs at the same offset.
 
 ## SDR Profile Workflow
