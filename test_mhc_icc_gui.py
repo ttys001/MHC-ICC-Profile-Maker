@@ -1,6 +1,9 @@
+import hashlib
 import unittest
+from datetime import datetime
 from pathlib import Path
 import tkinter as tk
+from unittest.mock import patch
 
 from mhc_icc_gui import (
     ICCBuilderApp,
@@ -34,15 +37,19 @@ class ProfileMakerTests(unittest.TestCase):
         self.assertEqual(len({tag.signature for tag in tags}), len(tags))
 
         by_signature = {tag.signature: tag for tag in tags}
-        self.assertEqual(by_signature["rTRC"].size(), 14)
-        self.assertEqual(by_signature["MHC2"].size(), 36)
+        self.assertEqual(by_signature["rTRC"].size(), 16)
+        self.assertEqual(by_signature["MHC2"].size(), 132)
         self.assertEqual(
             self.app.parse_text_type(by_signature["MSCA"].data_bytes()),
             "{'Appversion':'1.0.152.0','D65Adapted':True}",
         )
         mhc2 = self.app.parse_mhc2(by_signature["MHC2"].data_bytes())
-        self.assertEqual(mhc2["lut_entries"], 0)
-        self.assertEqual(mhc2["matrix_off"], 0)
+        self.assertEqual(mhc2["lut_entries"], 2)
+        self.assertEqual(mhc2["matrix_off"], 36)
+        self.assertEqual(
+            [mhc2["lut_r_off"], mhc2["lut_g_off"], mhc2["lut_b_off"]],
+            [84, 100, 116],
+        )
 
     def test_all_sample_profiles_parse(self):
         profiles = sorted(Path("samples").rglob("*.icc"))
@@ -128,6 +135,66 @@ class ProfileMakerTests(unittest.TestCase):
         self.app.reset_profile()
         self.assertIsNone(self.app.selected_tag)
         self.assertIsNone(self.app.workspace_kind)
+
+    def test_identity_lut_refreshes_offsets_and_preview(self):
+        self.app.reset_profile()
+        mhc2 = next(tag for tag in self.app.tags if tag.signature == "MHC2")
+        self.app.selected_tag = mhc2
+        self.app.render_mhc2_workspace(mhc2)
+        with patch("mhc_icc_gui.messagebox.showinfo"):
+            self.app.apply_mhc2_identity_lut()
+
+        parsed = self.app.parse_mhc2(mhc2.data_bytes())
+        self.assertEqual(parsed["lut_entries"], 2)
+        self.assertEqual(parsed["matrix_off"], 36)
+        self.assertEqual(
+            [parsed["lut_r_off"], parsed["lut_g_off"], parsed["lut_b_off"]],
+            [84, 100, 116],
+        )
+        self.assertEqual([var.get() for var in self.app.mhc2_preview_idx_vars[:2]], ["0", "1"])
+        self.assertEqual(
+            [[var.get() for var in row] for row in self.app.mhc2_preview_vars[:2]],
+            [["0.000000"] * 3, ["1.000000"] * 3],
+        )
+        self.app.reset_profile()
+
+    def test_v092_profile_bytes_for_defaults_and_csv(self):
+        class FixedDateTime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return cls(2026, 1, 2, 3, 4, 5, tzinfo=tz)
+
+        def profile_sha256():
+            with patch("mhc_icc_gui.datetime", FixedDateTime):
+                return hashlib.sha256(self.app.build_profile_bytes()).hexdigest()
+
+        self.app.reset_profile()
+        self.assertEqual(
+            profile_sha256(),
+            "030dae22ae3c3b7247b0b818bb4be4d87d8d03208686502e45fd1170bef2e148",
+        )
+
+        fixture = Path("samples/simple example")
+        mhc2 = next(tag for tag in self.app.tags if tag.signature == "MHC2")
+        self.app.selected_tag = mhc2
+        self.app.render_mhc2_workspace(mhc2)
+        matrix = read_mhc2_matrix(str(fixture / "matrix.csv"))
+        for row, values in zip(self.app.mhc2_matrix_vars, matrix):
+            for variable, value in zip(row, values):
+                variable.set(f"{value:.6f}")
+        self.app.mhc2_lut_values = read_mhc2_lut(str(fixture / "1DLUT.csv"))
+        self.app.mhc2_entries.set(str(len(self.app.mhc2_lut_values[0])))
+        self.app.rebuild_mhc2_from_ui(
+            float(self.app.mhc2_min.get()),
+            float(self.app.mhc2_peak.get()),
+            len(self.app.mhc2_lut_values[0]),
+            popup=False,
+        )
+        self.assertEqual(
+            profile_sha256(),
+            "c6c671cfbc370c8d222b4b41cd826cea0a6bdac3621937b725172d4afc5e2f71",
+        )
+        self.app.reset_profile()
 
 
 if __name__ == "__main__":

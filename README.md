@@ -63,7 +63,7 @@ python -m PyInstaller --noconfirm --clean --onefile --windowed --optimize 2 --na
 | Color | sRGB primaries, D65 white normalized to Y=1, identity `chad` |
 | TRCs | Shared gamma 2.2 `curveType` data |
 | Luminance | `lumi` = 80 nits; MHC2 minimum = 0.2 nits and peak = 80 nits |
-| MHC2 transforms | Matrix and 1D LUT omitted with zero offsets, which Windows defines as identity transforms |
+| MHC2 transforms | Explicit 3×4 identity matrix and two-point RGB identity LUT, matching Windows HDR Calibration output |
 | Text | `Copyright (C) User.` and `Default Device Profile` |
 | MSCA | `{'Appversion':'1.0.152.0','D65Adapted':True}` |
 

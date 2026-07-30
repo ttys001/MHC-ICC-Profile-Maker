@@ -63,7 +63,7 @@ python -m PyInstaller --noconfirm --clean --onefile --windowed --optimize 2 --na
 | 色彩 | sRGB 三原色、Y=1 的 D65 白点、单位矩阵 `chad` |
 | TRC | 三通道共享 gamma 2.2 `curveType` 数据 |
 | 亮度 | `lumi` = 80 nits；MHC2 最低亮度 = 0.2 nits，峰值亮度 = 80 nits |
-| MHC2 变换 | 省略矩阵和 1D LUT，并将偏移设为零；Windows 将其定义为单位变换 |
+| MHC2 变换 | 显式 3×4 单位矩阵和两点 RGB 单位 1D LUT，与 Windows HDR Calibration 输出保持一致 |
 | 文本 | `Copyright (C) User.` 和 `Default Device Profile` |
 | MSCA | `{'Appversion':'1.0.152.0','D65Adapted':True}` |
 

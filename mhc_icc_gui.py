@@ -277,8 +277,6 @@ def calculate_profile_id(profile: bytes) -> bytes:
     if len(profile) < 100:
         raise ValueError("Profile is too small to hash.")
     digest_input = bytearray(profile)
-    digest_input[44:48] = b"\x00" * 4
-    digest_input[64:68] = b"\x00" * 4
     digest_input[84:100] = b"\x00" * 16
     return hashlib.md5(digest_input, usedforsecurity=False).digest()
 
@@ -694,9 +692,9 @@ KNOWN_TAG_LIBRARY: Dict[str, str] = {
 
 DEFAULT_TAGS_SAMPLE: List[TagEntry] = [
     TagEntry("cprt", "Copyright", "6D6C756300000000000000010000000C656E5553000000260000001C0043006F0070007900720069006700680074002000280043002900200055007300650072002E0000"),
-    TagEntry("rTRC", "Red tone reproduction curve", "6375727600000000000000010233"),
-    TagEntry("gTRC", "Green tone reproduction curve", "6375727600000000000000010233"),
-    TagEntry("bTRC", "Blue tone reproduction curve", "6375727600000000000000010233"),
+    TagEntry("rTRC", "Red tone reproduction curve", "63757276000000000000000102330000"),
+    TagEntry("gTRC", "Green tone reproduction curve", "63757276000000000000000102330000"),
+    TagEntry("bTRC", "Blue tone reproduction curve", "63757276000000000000000102330000"),
     TagEntry("chad", "Chromatic adaptation", "7366333200000000000100000000000000000000000000000001000000000000000000000000000000010000"),
     TagEntry("rXYZ", "Red colorant", "58595A2000000000000069930000366D000004F1"),
     TagEntry("gXYZ", "Green colorant", "58595A200000000000005B8C0000B71700001E84"),
@@ -704,7 +702,7 @@ DEFAULT_TAGS_SAMPLE: List[TagEntry] = [
     TagEntry("wtpt", "Media white point", "58595A20000000000000F35100010000000116CC"),
     TagEntry("MSCA", "Microsoft Color Adaptation", "74657874000000007B2741707076657273696F6E273A27312E302E3135322E30272C2744363541646170746564273A547275657D00"),
     TagEntry("lumi", "Luminance", "58595A2000000000005000000050000000500000"),
-    TagEntry("MHC2", "Windows Advanced Color metadata", "4D4843320000000000000000000033330050000000000000000000000000000000000000"),
+    TagEntry("MHC2", "Windows Advanced Color metadata", "4D4843320000000000000002000033330050000000000024000000540000006400000074000100000000000000000000000000000000000000010000000000000000000000000000000000000001000000000000736633320000000000000000000100007366333200000000000000000001000073663332000000000000000000010000"),
     TagEntry("desc", "Profile description", "6D6C756300000000000000010000000C656E55530000002C0000001C00440065006600610075006C00740020004400650076006900630065002000500072006F00660069006C0065"),
 ]
 
@@ -1876,12 +1874,10 @@ class ICCBuilderApp:
                 if not math.isfinite(v):
                     raise ValueError(f"Matrix row {r + 1}, column {c + 1} must be finite.")
                 matrix_values.append(v)
-        matrix_block = b""
-        if matrix_values != identity_matrix12():
-            matrix_block = struct.pack(
-                ">" + "i" * 12,
-                *(to_s15fixed16(value) for value in matrix_values),
-            )
+        matrix_block = struct.pack(
+            ">" + "i" * 12,
+            *(to_s15fixed16(value) for value in matrix_values),
+        )
 
         lut_blocks = []
         if count > 0:
@@ -1894,7 +1890,7 @@ class ICCBuilderApp:
                 ints = [to_s15fixed16(value) for value in ch_vals]
                 lut_blocks.append(b"sf32" + b"\x00" * 4 + struct.pack(">" + "i" * count, *ints))
 
-        matrix_off_new = 36 if matrix_block else 0
+        matrix_off_new = 36
         lut_r_off_new = 36 + len(matrix_block) if count > 0 else 0
         lut_g_off_new = lut_r_off_new + (len(lut_blocks[0]) if count > 0 else 0) if count > 0 else 0
         lut_b_off_new = lut_g_off_new + (len(lut_blocks[1]) if count > 0 else 0) if count > 0 else 0
@@ -2018,9 +2014,9 @@ class ICCBuilderApp:
             messagebox.showerror("Load failed", f"Could not load LUT:\n{exc}")
 
     def apply_mhc2_identity_lut(self):
-        self.mhc2_lut_values = None
-        self.mhc2_entries.set("0")
-        self.rebuild_mhc2_from_fields(0, "1DLUT updated successfully.")
+        self.mhc2_lut_values = [[0.0, 1.0] for _ in range(3)]
+        self.mhc2_entries.set("2")
+        self.rebuild_mhc2_from_fields(2, "1DLUT updated successfully.")
 
     def show_four_color_matrix_calculator(self):
         win = tk.Toplevel(self.root)
