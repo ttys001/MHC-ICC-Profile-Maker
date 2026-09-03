@@ -103,21 +103,7 @@ MSCA 中的应用版本已于 2026-07-30 对照 Microsoft Store 实时目录核�
 
 ### 睡眠唤醒后未恢复校准
 
-如果经典颜色管理控制面板中的显示器专用关联正确，但“设置”选择了其他显示器的配置文件，可以使用仓库附带的 [MHC Profile Guard](MHC-Profile-Guard)。它会读取每台活动显示器的硬件标识和现有高级系统默认值，再通过当前用户的 Windows 颜色配置文件 API 恢复对应的 SDR 与 HDR 配置文件。
-
-在 PowerShell 中安装计划任务：
-
-```powershell
-.\MHC-Profile-Guard\MhcProfileGuard.ps1 -Install
-```
-
-该任务会在登录时启动隐藏的事件监听器。监听器平时保持空闲，不会轮询；当 Windows 广播显示配置变化时（包括显示器连接、移除及睡眠唤醒引起的拓扑变化），它会恢复正确关联。不带参数运行脚本，可以执行一次修复并显示当前关联。使用以下命令移除计划任务：
-
-```powershell
-.\MHC-Profile-Guard\MhcProfileGuard.ps1 -Uninstall
-```
-
-对于 Windows 自带的校准加载器，请打开任务计划程序，检查 **Microsoft → Windows → WindowsColorSystem → Calibration Loader**。启用 **Run with highest privileges**，并添加 **On an event** 触发器：System 日志、来源 `Power-Troubleshooter`、事件 ID `1`。
+睡眠唤醒或显示拓扑变化后，即使经典颜色管理控制面板显示正确的系统默认值，Windows 也可能选择另一台显示器的配置文件。仓库不再提供自动守护程序，因为显示关联可能跟随 GPU 源插槽转移到另一台显示器；请关闭 **Use my settings for this device**，并在问题出现时重新连接显示器或再次选择正确的系统默认值。
 
 ### 全屏与 Independent Flip
 

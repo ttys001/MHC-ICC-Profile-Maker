@@ -103,21 +103,7 @@ The reference profiles in this repository carry the same Windows HDR Calibration
 
 ### Calibration is not restored after sleep
 
-If Windows keeps the correct monitor-specific associations in the classic Color Management control panel but Settings selects a profile intended for another monitor, use the included [MHC Profile Guard](MHC-Profile-Guard). It reads each active display's hardware identity and existing Advanced System Defaults, then restores the corresponding SDR and HDR profile through the current-user Windows color-profile APIs.
-
-Install the scheduled task from PowerShell:
-
-```powershell
-.\MHC-Profile-Guard\MhcProfileGuard.ps1 -Install
-```
-
-The task starts a hidden listener at logon. It remains idle without polling, then repairs the associations when Windows broadcasts a display-configuration change, including monitor connection, removal, and sleep/wake topology changes. Run the script without options to repair and display the current associations once. Remove the task with:
-
-```powershell
-.\MHC-Profile-Guard\MhcProfileGuard.ps1 -Uninstall
-```
-
-For the inbox calibration loader itself, open Task Scheduler and inspect **Microsoft → Windows → WindowsColorSystem → Calibration Loader**. Enable **Run with highest privileges** and add an **On an event** trigger for System log, source `Power-Troubleshooter`, event ID `1`.
+After sleep or a display-topology change, Windows can select another monitor's profile even when the classic Color Management control panel shows the correct system defaults. An automatic guard is not included because display associations can follow GPU source slots between monitors; keep **Use my settings for this device** disabled and reconnect the displays or select the correct system default again if this occurs.
 
 ### Full-screen and independent flip
 
