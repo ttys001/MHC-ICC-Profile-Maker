@@ -103,7 +103,21 @@ MSCA 中的应用版本已于 2026-07-30 对照 Microsoft Store 实时目录核�
 
 ### 睡眠唤醒后未恢复校准
 
-可尝试以下解决方法：打开任务计划程序，检查 **Microsoft → Windows → WindowsColorSystem → Calibration Loader**。启用 **Run with highest privileges**，并添加 **On an event** 触发器：System 日志、来源 `Power-Troubleshooter`、事件 ID `1`。
+如果经典颜色管理控制面板中的显示器专用关联正确，但“设置”选择了其他显示器的配置文件，可以使用仓库附带的 [MHC Profile Guard](MHC-Profile-Guard)。它会读取每台活动显示器的硬件标识和现有高级系统默认值，再通过当前用户的 Windows 颜色配置文件 API 恢复对应的 SDR 与 HDR 配置文件。
+
+在 PowerShell 中安装计划任务：
+
+```powershell
+.\MHC-Profile-Guard\MhcProfileGuard.ps1 -Install
+```
+
+该任务会在登录、显示配置变化、显示器连接或移除，以及睡眠唤醒后静默运行。每次运行会在 25 秒后退出，任务计划程序还会强制执行 30 秒上限；后台不会持续轮询。不带参数运行脚本，可以执行一次修复并显示当前关联。使用以下命令移除计划任务：
+
+```powershell
+.\MHC-Profile-Guard\MhcProfileGuard.ps1 -Uninstall
+```
+
+对于 Windows 自带的校准加载器，请打开任务计划程序，检查 **Microsoft → Windows → WindowsColorSystem → Calibration Loader**。启用 **Run with highest privileges**，并添加 **On an event** 触发器：System 日志、来源 `Power-Troubleshooter`、事件 ID `1`。
 
 ### 全屏与 Independent Flip
 
