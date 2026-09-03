@@ -111,7 +111,7 @@ Install the scheduled task from PowerShell:
 .\MHC-Profile-Guard\MhcProfileGuard.ps1 -Install
 ```
 
-The task runs silently at logon, after display-configuration changes, after monitor connection or removal, and after resume from sleep. Each invocation exits after 25 seconds, and Task Scheduler enforces a 30-second limit; there is no persistent polling process. Run the script without options to repair and display the current associations once. Remove the task with:
+The task starts a hidden listener at logon. It remains idle without polling, then repairs the associations when Windows broadcasts a display-configuration change, including monitor connection, removal, and sleep/wake topology changes. Run the script without options to repair and display the current associations once. Remove the task with:
 
 ```powershell
 .\MHC-Profile-Guard\MhcProfileGuard.ps1 -Uninstall

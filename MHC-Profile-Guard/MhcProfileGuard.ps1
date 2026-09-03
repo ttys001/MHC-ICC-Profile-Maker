@@ -2,8 +2,7 @@
 param(
     [switch]$Install,
     [switch]$Uninstall,
-    [ValidateRange(0, 30)]
-    [int]$DurationSeconds = 0,
+    [switch]$Listen,
     [string]$TaskName = 'MHC Profile Guard'
 )
 
@@ -18,16 +17,12 @@ function Install-GuardTask {
     $xml = @"
 <?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <RegistrationInfo><Description>Repairs monitor-specific SDR/HDR ICC defaults after display topology changes.</Description><Author>$sid</Author></RegistrationInfo>
+  <RegistrationInfo><Description>Listens for display topology changes and repairs monitor-specific SDR/HDR ICC defaults.</Description><Author>$sid</Author></RegistrationInfo>
   <Triggers>
     <LogonTrigger><Enabled>true</Enabled><UserId>$sid</UserId></LogonTrigger>
-    <EventTrigger><Enabled>true</Enabled><Subscription>&lt;QueryList&gt;&lt;Query Id="0" Path="System"&gt;&lt;Select Path="System"&gt;*[System[Provider[@Name='Display'] and EventID=4107]]&lt;/Select&gt;&lt;/Query&gt;&lt;/QueryList&gt;</Subscription><Delay>PT2S</Delay></EventTrigger>
-    <EventTrigger><Enabled>true</Enabled><Subscription>&lt;QueryList&gt;&lt;Query Id="0" Path="Microsoft-Windows-Kernel-PnP/Configuration"&gt;&lt;Select Path="Microsoft-Windows-Kernel-PnP/Configuration"&gt;*[System[Provider[@Name='Microsoft-Windows-Kernel-PnP'] and (EventID=400 or EventID=410 or EventID=420)]] and *[EventData[Data[@Name='ClassGuid']='{4d36e96e-e325-11ce-bfc1-08002be10318}']]&lt;/Select&gt;&lt;/Query&gt;&lt;/QueryList&gt;</Subscription><Delay>PT2S</Delay></EventTrigger>
-    <EventTrigger><Enabled>true</Enabled><Subscription>&lt;QueryList&gt;&lt;Query Id="0" Path="Microsoft-Windows-Kernel-PnP/Device Management"&gt;&lt;Select Path="Microsoft-Windows-Kernel-PnP/Device Management"&gt;*[System[Provider[@Name='Microsoft-Windows-Kernel-PnP'] and EventID=1010]]&lt;/Select&gt;&lt;/Query&gt;&lt;/QueryList&gt;</Subscription><Delay>PT2S</Delay></EventTrigger>
-    <EventTrigger><Enabled>true</Enabled><Subscription>&lt;QueryList&gt;&lt;Query Id="0" Path="System"&gt;&lt;Select Path="System"&gt;*[System[Provider[@Name='Microsoft-Windows-Power-Troubleshooter'] and EventID=1]]&lt;/Select&gt;&lt;/Query&gt;&lt;/QueryList&gt;</Subscription><Delay>PT3S</Delay></EventTrigger>
   </Triggers>
   <Principals><Principal id="Author"><UserId>$sid</UserId><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>
-  <Settings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries><AllowHardTerminate>true</AllowHardTerminate><StartWhenAvailable>true</StartWhenAvailable><RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable><IdleSettings><StopOnIdleEnd>false</StopOnIdleEnd><RestartOnIdle>false</RestartOnIdle></IdleSettings><AllowStartOnDemand>true</AllowStartOnDemand><Enabled>true</Enabled><Hidden>true</Hidden><RunOnlyIfIdle>false</RunOnlyIfIdle><DisallowStartOnRemoteAppSession>false</DisallowStartOnRemoteAppSession><UseUnifiedSchedulingEngine>true</UseUnifiedSchedulingEngine><WakeToRun>false</WakeToRun><ExecutionTimeLimit>PT30S</ExecutionTimeLimit><Priority>7</Priority></Settings>
+  <Settings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries><AllowHardTerminate>true</AllowHardTerminate><StartWhenAvailable>true</StartWhenAvailable><RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable><IdleSettings><StopOnIdleEnd>false</StopOnIdleEnd><RestartOnIdle>false</RestartOnIdle></IdleSettings><AllowStartOnDemand>true</AllowStartOnDemand><Enabled>true</Enabled><Hidden>true</Hidden><RunOnlyIfIdle>false</RunOnlyIfIdle><DisallowStartOnRemoteAppSession>false</DisallowStartOnRemoteAppSession><UseUnifiedSchedulingEngine>true</UseUnifiedSchedulingEngine><WakeToRun>false</WakeToRun><ExecutionTimeLimit>PT0S</ExecutionTimeLimit><Priority>7</Priority></Settings>
   <Actions Context="Author"><Exec><Command>C:\Windows\System32\wscript.exe</Command><Arguments>&quot;$escapedLauncher&quot;</Arguments></Exec></Actions>
 </Task>
 "@
@@ -42,8 +37,9 @@ function Install-GuardTask {
     Get-ScheduledTask -TaskName $TaskName
 }
 
-if ($Install -and $Uninstall) { throw 'Choose either -Install or -Uninstall.' }
-if (($Install -or $Uninstall) -and $DurationSeconds) { throw 'DurationSeconds cannot be combined with installation options.' }
+if (($Install -and ($Uninstall -or $Listen)) -or ($Uninstall -and $Listen)) {
+    throw 'Choose only one of -Install, -Uninstall, or -Listen.'
+}
 if ($Uninstall) {
     Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
@@ -280,7 +276,7 @@ function Repair-MhcProfiles {
     }
 }
 
-if ($DurationSeconds -eq 0) {
+if (-not $Listen) {
     Repair-MhcProfiles
     return
 }
@@ -288,21 +284,17 @@ if ($DurationSeconds -eq 0) {
 $eventName = 'MhcProfileGuard.DisplaySettingsChanged'
 Register-ObjectEvent -InputObject ([Microsoft.Win32.SystemEvents]) `
     -EventName DisplaySettingsChanged -SourceIdentifier $eventName | Out-Null
-$deadline = [DateTime]::UtcNow.AddSeconds($DurationSeconds)
 try {
-    do {
+    try { Repair-MhcProfiles }
+    catch { Write-Error $_ -ErrorAction Continue }
+    while ($true) {
+        $event = Wait-Event -SourceIdentifier $eventName
+        Remove-Event -EventIdentifier $event.EventIdentifier
+        Start-Sleep -Milliseconds 750
+        Get-Event -SourceIdentifier $eventName -ErrorAction Ignore | Remove-Event
         try { Repair-MhcProfiles }
         catch { Write-Error $_ -ErrorAction Continue }
-
-        $remaining = [Math]::Ceiling(($deadline - [DateTime]::UtcNow).TotalSeconds)
-        if ($remaining -le 0) { break }
-        $event = Wait-Event -SourceIdentifier $eventName -Timeout $remaining
-        if ($event) {
-            Remove-Event -EventIdentifier $event.EventIdentifier
-            Start-Sleep -Milliseconds 750
-            Get-Event -SourceIdentifier $eventName -ErrorAction Ignore | Remove-Event
-        }
-    } while ([DateTime]::UtcNow -lt $deadline)
+    }
 }
 finally {
     Unregister-Event -SourceIdentifier $eventName -ErrorAction Ignore
