@@ -51,10 +51,69 @@ class LutTests(unittest.TestCase):
                      "LUT_1D_SIZE 1\n0 0", "LUT_1D_SIZE 1\n0 0 0 0", "LUT_1D_SIZE 1\n0 no 0",
                      "LUT_1D_SIZE 1\n1.1 0 0", "LUT_1D_SIZE 1\nnan 0 0",
                      "LUT_1D_SIZE 1\nDOMAIN_MIN -1 0 0\n0 0 0",
-                     "LUT_1D_SIZE 1\nDOMAIN_MAX 2 2 2\n0 0 0",
+                     "LUT_1D_SIZE 1\nDOMAIN_MAX 0 0 0\n0 0 0",
                      "LUT_1D_SIZE 1\nDOMAIN_MAX nan 1 1\n0 0 0"):
             with self.subTest(text=text), self.assertRaises(ValueError):
                 self.read_fixture(text, ".cube")
+
+    def test_cube_full_range_input_units_preserve_output(self):
+        rows = "0 0 0\n0.5 0.49 0.51\n1 0.98 0.99\n"
+        expected = [[0, 0.5, 1], [0, 0.49, 0.98], [0, 0.51, 0.99]]
+        domains = ["", "DOMAIN_MIN 0 0 0", "DOMAIN_MAX 2 2 2"]
+        for maximum in (1, 255, 1023, 4095, 65535, 10000, 0.5, 1e-12):
+            iridas = f"DOMAIN_MIN 0 0 0\nDOMAIN_MAX {maximum} {maximum} {maximum}\n"
+            resolve = f"LUT_1D_INPUT_RANGE 0 {maximum}\n"
+            domains.extend((iridas, resolve, iridas + resolve))
+        domains.extend(("DOMAIN_MIN 1e-12 0 0\nDOMAIN_MAX 1 1 1",
+                        "DOMAIN_MAX 1023 1023.0000000001 1023\nLUT_1D_INPUT_RANGE 0 1023"))
+        for domain in domains:
+            with self.subTest(domain=domain):
+                text = '# DaVinci Resolve / IRIDAS 1D\nTITLE "Calibration"\nLUT_1D_SIZE 3\n' + domain + "\n" + rows
+                self.assertEqual(self.read_fixture(text, ".cube"), expected)
+
+    def test_cube_invalid_input_domains(self):
+        domains = ("LUT_1D_INPUT_RANGE 64 940", "LUT_1D_INPUT_RANGE 16 235",
+                   "LUT_1D_INPUT_RANGE 0.1 1", "LUT_1D_INPUT_RANGE -0.125 1.125",
+                   "DOMAIN_MIN 64 64 64\nDOMAIN_MAX 940 940 940",
+                   "DOMAIN_MAX 1023 4095 65535", "DOMAIN_MIN 0 0.1 0",
+                   "DOMAIN_MAX 1023 1023 1023\nLUT_1D_INPUT_RANGE 0 1",
+                   "DOMAIN_MIN 0 0 0\nLUT_1D_INPUT_RANGE 0 1023",
+                   "LUT_1D_INPUT_RANGE 0 0", "LUT_1D_INPUT_RANGE 0 -1",
+                   "LUT_1D_INPUT_RANGE 1e-10 1e-11", "DOMAIN_MAX -1 -1 -1",
+                   "DOMAIN_MIN nan 0 0", "DOMAIN_MAX inf inf inf",
+                   "LUT_1D_INPUT_RANGE nan 1", "LUT_1D_INPUT_RANGE 0 inf",
+                   "LUT_1D_INPUT_RANGE 0", "LUT_1D_INPUT_RANGE 0 1 2",
+                   "DOMAIN_MIN 0 0", "DOMAIN_MAX 1 1 1 1",
+                   "LUT_1D_INPUT_RANGE 0 1\nLUT_1D_INPUT_RANGE 0 1")
+        for domain in domains:
+            with self.subTest(domain=domain), self.assertRaises(ValueError):
+                self.read_fixture("LUT_1D_SIZE 1\n" + domain + "\n0 0 0", ".cube")
+        for row in ("0 0 1023", "-0.01 0 0", "0 nan 0", "0 0 inf"):
+            with self.subTest(row=row), self.assertRaises(ValueError):
+                self.read_fixture("LUT_1D_SIZE 1\nLUT_1D_INPUT_RANGE 0 1023\n" + row, ".cube")
+
+    def test_colourspace_quantel_type2_headers(self):
+        # Same header structure as the supplied ColourSpace Unity 12-bit export.
+        for count, maximum in ((1, 65535), (65, 1023), (101, 65535), (4096, 4095)):
+            text = ("# Authors: Light Illusion\n# RGB\ntable type\t2\n\n"
+                    f"gMax\t{maximum}\ngSize\t{count}\nR\tG\tB\n"
+                    + "\n".join(f"{i} {i} {i}" for i in range(count)))
+            with self.subTest(count=count, maximum=maximum):
+                expected = [[i / maximum for i in range(count)]] * 3
+                self.assertEqual(self.read_fixture(text, ".txt"), expected)
+        for header in ("table type2\ngMax 511\ngSize 2", "# table type 2\n#gMax 511\n#gSize 2",
+                       "table type 2 # comment\ngMax 511 # comment\ngSize 2 # comment"):
+            self.assertEqual(self.read_fixture(header + "\n511 511 511\n0 0 0", ".txt"), [[1, 0]] * 3)
+        for text in ("gMax 1023\nmax value 65535\n0 0 0", "gMax 0\n0 0 0",
+                     "gMax nan\n0 0 0", "gMax 1023\n0 0 1024", "gMax bad\n0 0 0",
+                     "gSize 2\n0 0 0", "gSize 1\ngSize 2\n0 0 0",
+                     "gSize 0\n0 0 0", "gSize 1.5\n0 0 0", "gSize\n0 0 0",
+                     "table type 1\n0 0 0", "table type 3\n0 0 0", "table type bad\n0 0 0"):
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                self.read_fixture(text, ".txt")
+        text = "table type 2\ngMax 65535\ngSize 65536\nR G B\n" + "\n".join(f"{i} {i} {i}" for i in range(65536))
+        with self.assertRaisesRegex(ValueError, "65536 entries; MHC2 supports 1–4096"):
+            self.read_fixture(text, ".txt")
 
     def test_quantel_metadata_and_counts(self):
         for count in (65, 101, 256, 4096):
@@ -71,7 +130,8 @@ class LutTests(unittest.TestCase):
                 self.read_fixture(text, ".txt")
 
     def test_3d_rejected_even_with_small_table_or_wrong_extension(self):
-        for marker in ("LUT_3D_SIZE 2", "LUT3D", "cube size 2", "#cube data", "#vertices 2", "SAM cube 2"):
+        for marker in ("LUT_3D_SIZE 2", "LUT_3D_INPUT_RANGE 0 1", "LUT_1D_SIZE 2\nLUT_3D_SIZE 2",
+                       "LUT3D", "cube size 2", "#cube data", "#vertices 2", "SAM cube 2"):
             for suffix in (".cube", ".txt", ".csv", ".unknown"):
                 with self.subTest(marker=marker, suffix=suffix), self.assertRaisesRegex(ValueError, "Only RGB 1D"):
                     self.read_fixture(marker + "\n0 0 0\n" * 8, suffix)
@@ -129,6 +189,22 @@ class ProfileMakerTests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.root.destroy()
+
+    def test_cube_input_units_produce_identical_mhc2_bytes(self):
+        self.app.reset_profile()
+        self.addCleanup(self.app.reset_profile)
+        tag = next(t for t in self.app.tags if t.signature == "MHC2")
+        self.app.render_mhc2_workspace(tag)
+        outputs = []
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "range.cube"
+            for declaration in ("LUT_1D_INPUT_RANGE 0 1", "LUT_1D_INPUT_RANGE 0 1023",
+                                "DOMAIN_MIN 0 0 0\nDOMAIN_MAX 65535 65535 65535"):
+                path.write_text("LUT_1D_SIZE 3\n" + declaration + "\n0 0 0\n0.5 0.49 0.51\n1 0.98 0.99\n", encoding="utf-8")
+                self.app.mhc2_lut_values = read_mhc2_lut(str(path))
+                outputs.append(self.app.build_mhc2_bytes(0.2, 80, 3))
+        self.assertEqual(outputs, [outputs[0]] * 3)
+        self.assertEqual(self.app.parse_mhc2(outputs[0])["lut_entries"], 3)
 
     def test_default_profile_is_structurally_valid(self):
         profile = self.app.build_profile_bytes()

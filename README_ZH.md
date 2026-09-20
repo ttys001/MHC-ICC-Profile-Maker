@@ -55,12 +55,14 @@ build/release-venv/Scripts/python.exe -m pip install --index-url https://pypi.or
 
 ## 矩阵与 RGB 1D LUT 输入
 
+下述扩展的 Cube 输入域及 Quantel 头信息支持已加入当前源码；已发布的 v0.94.1 安装包保持不变。
+
 - 矩阵：三行数值，每行三列或四列。Windows 以 3×4 格式保存矩阵，但忽略第四列。
 - **Load RGB 3x1DLUT…** 支持 CSV、1D `.cube` 和 ColourSpace/Light Illusion Quantel 风格的 `.txt`，数据为 RGB 三列；拒绝 3D LUT。
 - MHC2 支持 **1–4096 的任意条目数**，不要求是 2 的幂。导入保留原始采样数量：101 行源数据就写入 101 个条目，不补点、不截断、不自动重采样；`Entries:` 保持只读。
 - CSV 可使用归一化的 `0–1`，或整数范围 `0–255`、`0–1023`、`0–4095`、`0–65535`；应用检测范围并归一化到 `0–1`。支持逗号、分号、制表符、UTF-8 BOM、空行及 `#` 注释。
-- Cube 必须包含与数据行数一致的 `LUT_1D_SIZE`，输出值须为 `0–1`；可带 `TITLE` 和注释。输入域须省略或为 `DOMAIN_MIN 0 0 0` / `DOMAIN_MAX 1 1 1`；其他输入域会被拒绝，不会用于缩放输出值。
-- Quantel TXT 允许数据表前的文字头。显式的 `max value 1023`、`max value 65535`、`bit depth 10` 或 `range 0 1023` 元数据（包括带 `#` 前缀的形式）决定归一化范围；无元数据时才采用 CSV 的范围检测。拒绝冲突元数据、无效数值及 `cube size`、`cube data`、`vertices`、`LUT3D` 等 3D 声明。
+- Cube 必须包含与数据行数一致的 `LUT_1D_SIZE`，输出值须为 `0–1` 内的有限数值；可带 `TITLE` 和注释。支持 IRIDAS/Adobe 的 `DOMAIN_MIN/MAX` 及 DaVinci Resolve 的 `LUT_1D_INPUT_RANGE`，接受 `0–1`、`0–1023`、`0–65535` 等以零起始、上限为任意有限正数的完整输入域。输入域单位不会缩放输出值，也不会改变采样数量。省略的边界按 `0–1` 处理；RGB 通道边界须一致，混合声明须匹配（容差 `1e-9`）。部分范围或非零起点需要明确的域外处理策略，因此拒绝导入。本 MHC2 导入器不支持输出超出 `0–1` 的一般场景线性／shaper Cube，也不支持混合 1D+3D 文件。
+- Quantel TXT 允许数据表前的文字头，支持 ColourSpace 的 `table type 2`、`gMax`（输出最大值）、`gSize`（准确的 RGB 行数）及 `R G B` 列名。显式的 `gMax`、`max value`、`bit depth` 或零起点 `range` 元数据（包括 `#` 前缀形式）决定归一化范围；否则采用 CSV 范围检测。拒绝冲突元数据、`gSize` 不匹配、不支持的表类型、无效数值及 `cube size`、`cube data`、`vertices`、`LUT3D` 等 3D 声明。12-bit Unity 的 `gMax 4095` / `gSize 4096` 保持 4096 点导入；16-bit Unity 的 `gSize 65536` 超过 MHC2 上限，须另行导出为不超过 4096 点的 LUT，导入不会偷偷降采样。
 - 矩阵计算器接受 xyY 或 XYZ 格式的 W/R/G/B 四行数据。
 
 ### 可选重采样
@@ -128,6 +130,8 @@ MSI MPG 272URX 的 tone mapping 说明只适用于测试时的显示器固件和
 
 ## 参考资料
 
+- [Quantel/SAM Utilities 用户指南，第 3.2.5–3.2.7 节（1D LUT 头信息）](https://wwwapps.grassvalley.com/docs/Manuals/sam/Post%20and%20Editing/Utilities%20User%20Guide.pdf)
+- [Blackmagic Design 论坛：Cube LUT 格式说明](https://forum.blackmagicdesign.com/viewtopic.php?f=21&t=40284)
 - [Windows 硬件显示色彩校准管线](https://learn.microsoft.com/en-us/windows/win32/wcs/display-calibration-mhc)
 - [Advanced Color 下的 ICC 配置文件行为](https://learn.microsoft.com/en-us/windows/win32/wcs/advanced-color-icc-profiles)
 - [Windows HDR Calibration](https://apps.microsoft.com/detail/9N7F2SM5D1LR)

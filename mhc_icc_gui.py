@@ -210,7 +210,8 @@ def reject_3d_lut(text: str):
 
 def normalize_lut_rows(rows: List[List[float]], normalization: float | None = None) -> List[List[float]]:
     if not 1 <= len(rows) <= 4096:
-        raise ValueError("Entry count must be between 1 and 4096.")
+        raise ValueError(f"LUT contains {len(rows)} entries; MHC2 supports 1–4096. "
+                         "Export a LUT with at most 4096 entries; import does not resample.")
     if any(len(row) != 3 for row in rows):
         raise ValueError("Each LUT row must contain exactly three RGB values.")
     if not all(math.isfinite(value) for row in rows for value in row):
@@ -239,13 +240,14 @@ def read_mhc2_lut_cube(path: str) -> List[List[float]]:
     reject_3d_lut(text)
     rows = []
     declarations = set()
+    domains = {}
     count = None
     for number, line in enumerate(text.splitlines(), 1):
         cells = line.split("#", 1)[0].split()
         if not cells:
             continue
         key = cells[0].upper()
-        if key in {"TITLE", "LUT_1D_SIZE", "DOMAIN_MIN", "DOMAIN_MAX"}:
+        if key in {"TITLE", "LUT_1D_SIZE", "DOMAIN_MIN", "DOMAIN_MAX", "LUT_1D_INPUT_RANGE"}:
             if rows or key in declarations:
                 raise ValueError(f"Invalid or duplicate Cube declaration on line {number}.")
             declarations.add(key)
@@ -259,9 +261,12 @@ def read_mhc2_lut_cube(path: str) -> List[List[float]]:
                     raise ValueError("Entry count must be between 1 and 4096.")
             else:
                 domain = [float(value) for value in cells[1:]]
-                expected = 0.0 if key == "DOMAIN_MIN" else 1.0
-                if len(domain) != 3 or not all(math.isfinite(v) and abs(v - expected) <= 1e-9 for v in domain):
-                    raise ValueError("Only the normalized Cube input domain 0–1 is supported.")
+                size = 2 if key == "LUT_1D_INPUT_RANGE" else 3
+                if len(domain) != size or not all(math.isfinite(v) for v in domain):
+                    raise ValueError(f"{key} requires {size} finite input-domain values.")
+                if size == 3 and not all(math.isclose(v, domain[0], rel_tol=1e-9, abs_tol=1e-9) for v in domain):
+                    raise ValueError("1D Cube input domains must be the same for all RGB channels.")
+                domains[key] = domain
         else:
             try:
                 rows.append([float(value) for value in cells])
@@ -271,6 +276,22 @@ def read_mhc2_lut_cube(path: str) -> List[List[float]]:
         raise ValueError("Cube requires LUT_1D_SIZE.")
     if len(rows) != count:
         raise ValueError("LUT_1D_SIZE does not match the RGB data-row count.")
+    input_min = domains.get("DOMAIN_MIN", [0.0])[0]
+    input_max = domains.get("DOMAIN_MAX", [1.0])[0]
+    if "LUT_1D_INPUT_RANGE" in domains:
+        resolve_domain = domains["LUT_1D_INPUT_RANGE"]
+        if {"DOMAIN_MIN", "DOMAIN_MAX"} & domains.keys():
+            if not all(math.isclose(a, b, rel_tol=1e-9, abs_tol=1e-9)
+                       for a, b in zip((input_min, input_max), resolve_domain)):
+                raise ValueError("Conflicting 1D Cube input-domain declarations.")
+        input_min, input_max = resolve_domain
+    if abs(input_min) > 1e-9:
+        raise ValueError("This 1D Cube uses a partial or non-zero-based input domain. "
+                         "Only full-range domains beginning at 0 can be mapped losslessly to MHC2.")
+    if input_max <= max(0.0, input_min):
+        raise ValueError("1D Cube input-domain maximum must be positive and greater than its minimum.")
+    # Input units only: uniform 0..MAX positions map to 0..1 without changing
+    # sample counts or output values. Cube outputs never use integer scaling.
     return normalize_lut_rows(rows, 1.0)
 
 
@@ -279,9 +300,22 @@ def read_mhc2_lut_quantel_txt(path: str) -> List[List[float]]:
     reject_3d_lut(text)
     rows = []
     normalization = None
+    declared_size = None
     for number, raw in enumerate(text.splitlines(), 1):
         header = raw.strip().lstrip("#").strip()
-        metadata = re.match(r"(?i)^(max(?:imum)?\s+value|bit[ _-]?depth|range)\b\s*[:=]?\s*(.*?)\s*(?:#.*)?$", header)
+        table_type = re.fullmatch(r"(?i)table\s+type\s*[:=]?\s*(.*?)\s*(?:#.*)?", header)
+        if table_type:
+            if rows or table_type[1] != "2":
+                raise ValueError("Only RGB 1D Quantel table type 2 is supported.")
+            continue
+        size = re.fullmatch(r"(?i)gSize\b\s*[:=]?\s*(.*?)\s*(?:#.*)?", header)
+        if size:
+            count = int(size[1])
+            if rows or count < 1 or (declared_size is not None and count != declared_size):
+                raise ValueError("Invalid or conflicting Quantel gSize declaration.")
+            declared_size = count
+            continue
+        metadata = re.match(r"(?i)^(gMax|max(?:imum)?\s+value|bit[ _-]?depth|range)\b\s*[:=]?\s*(.*?)\s*(?:#.*)?$", header)
         if metadata:
             key, value = metadata.groups()
             if key.lower() == "range":
@@ -313,6 +347,8 @@ def read_mhc2_lut_quantel_txt(path: str) -> List[List[float]]:
                 raise ValueError(f"Invalid Quantel RGB row on line {number}.") from exc
             continue  # Harmless version/title/column headers before the table.
         rows.append(row)
+    if declared_size is not None and len(rows) != declared_size:
+        raise ValueError(f"Quantel gSize declares {declared_size} entries, but the RGB table contains {len(rows)}.")
     return normalize_lut_rows(rows, normalization)
 
 
