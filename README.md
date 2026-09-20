@@ -78,8 +78,6 @@ Parsing and resampling retain Python float precision in the workspace. Only ICC 
 | Text | `Copyright (C) User.` and `Default Device Profile` |
 | MSCA | `{'Appversion':'1.0.152.0','D65Adapted':True}` |
 
-The MSCA app version was rechecked against [Microsoft’s live Store catalog](https://displaycatalog.mp.microsoft.com/v7.0/products/9N7F2SM5D1LR?market=US&languages=en-US) on 2026-09-20. The current listed Windows HDR Calibration package remains `1.0.152.0`, so the preset field is already current. MSCA is a private Microsoft tag; changing only its version string does not reproduce another app version’s behavior.
-
 ## Essential MHC2 rules
 
 - A usable MHC profile needs valid ST.2086 metadata: RGB primaries, white point, maximum full-frame luminance, minimum luminance, and peak luminance. Treat defaults as placeholders for the target display.
@@ -101,8 +99,6 @@ Use measured native primaries and valid luminance metadata. Windows performs sou
 ### HDR
 
 Use measured or reliable display primaries/white point, store maximum full-frame luminance in `lumi`, and store minimum/peak luminance in `MHC2`. Use the matrix for intentional XYZ adjustment or measured correction, and the 1D LUT for post-transfer-function calibration. Identity is valid when no adjustment is required.
-
-The reference profiles in this repository carry the same Windows HDR Calibration `1.0.152.0` MSCA string. MSCA is private, so these examples should not be treated as a promise that future app versions will use the same data.
 
 ## Samples
 

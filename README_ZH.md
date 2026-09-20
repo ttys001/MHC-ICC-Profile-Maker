@@ -78,8 +78,6 @@ PCHIP 仅使用标准库，保持局部曲线形状与单调区间，避免普�
 | 文本 | `Copyright (C) User.` 和 `Default Device Profile` |
 | MSCA | `{'Appversion':'1.0.152.0','D65Adapted':True}` |
 
-MSCA 中的应用版本已于 2026-09-20 重新对照 [Microsoft Store 实时目录](https://displaycatalog.mp.microsoft.com/v7.0/products/9N7F2SM5D1LR?market=US&languages=en-US) 核验。当前列出的 Windows HDR Calibration 安装包仍为 `1.0.152.0`，预设字段已是当前版本。MSCA 是 Microsoft 私有标签；只修改版本字符串并不能复现另一个应用版本的行为。
-
 ## MHC2 关键规则
 
 - 可用的 MHC 配置文件必须包含有效的 ST.2086 元数据：RGB 三原色、白点、最大全帧亮度、最低亮度和峰值亮度。默认值仅应作为目标显示器的占位值。
@@ -101,8 +99,6 @@ MSCA 中的应用版本已于 2026-09-20 重新对照 [Microsoft Store 实时目
 ### HDR
 
 使用测得或可靠的显示器三原色/白点；在 `lumi` 中保存最大全帧亮度，在 `MHC2` 中保存最低和峰值亮度。矩阵可用于有意的 XYZ 调整或测量校正；1D LUT 用于线路格式传递函数之后的校准。无需调整时可使用单位变换。
-
-仓库中的参考配置文件带有相同的 Windows HDR Calibration `1.0.152.0` MSCA 字符串。MSCA 是私有标签，因此不能据此断定未来版本仍会使用相同数据。
 
 ## 示例
 
