@@ -194,6 +194,8 @@ def read_mhc2_matrix(path: str) -> List[List[float]]:
 def read_mhc2_lut(path: str) -> List[List[float]]:
     text = Path(path).read_text(encoding="utf-8-sig")
     reject_3d_lut(text)
+    if re.search(r"(?im)^\s*#GammaRamp\s*$", text):
+        return read_mhc2_lut_vcgt_txt(path)
     extension = Path(path).suffix.lower()
     if extension == ".cube" or re.search(r"(?im)^\s*LUT_1D_SIZE\b", text):
         return read_mhc2_lut_cube(path)
@@ -233,6 +235,37 @@ def read_mhc2_lut_csv(path: str) -> List[List[float]]:
     if any(len(row) < 3 for row in rows):
         raise ValueError("Each LUT row must contain R, G, and B values.")
     return normalize_lut_rows([row[:3] for row in rows])
+
+
+def read_mhc2_lut_vcgt_txt(path: str) -> List[List[float]]:
+    """Read indexed, unsigned 16-bit RGB #GammaRamp text (not an ICC tag)."""
+    text = Path(path).read_text(encoding="utf-8-sig")
+    reject_3d_lut(text)
+    rows = []
+    header_seen = False
+    for number, raw in enumerate(text.splitlines(), 1):
+        if raw.strip().lower() == "#gammaramp":
+            if header_seen or rows:
+                raise ValueError("Duplicate or misplaced VCGT #GammaRamp header.")
+            header_seen = True
+            continue
+        cells = raw.split("#", 1)[0].split()
+        if not cells:
+            continue
+        if not header_seen:
+            raise ValueError("VCGT text requires #GammaRamp before the RGB table.")
+        if len(cells) != 4:
+            raise ValueError(f"VCGT line {number} must contain an index and three RGB values.")
+        try:
+            index, *rgb = [int(value) for value in cells]
+        except ValueError as exc:
+            raise ValueError(f"VCGT line {number} must contain integers.") from exc
+        if index != len(rows):
+            raise ValueError(f"VCGT indices must be consecutive from 0; expected {len(rows)} on line {number}.")
+        rows.append(rgb)
+    if not header_seen:
+        raise ValueError("VCGT text requires a #GammaRamp header.")
+    return normalize_lut_rows(rows, 65535.0)
 
 
 def read_mhc2_lut_cube(path: str) -> List[List[float]]:
@@ -2207,7 +2240,7 @@ class ICCBuilderApp:
         path = filedialog.askopenfilename(
             title="Load RGB 1D LUT",
             filetypes=[("1D LUT files", "*.csv *.cube *.txt"), ("CSV files", "*.csv"),
-                       ("Cube files", "*.cube"), ("Text / Quantel files", "*.txt"), ("All files", "*.*")],
+                       ("Cube files", "*.cube"), ("Text / Quantel / VCGT files", "*.txt"), ("All files", "*.*")],
         )
         if not path:
             return

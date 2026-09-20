@@ -56,6 +56,31 @@ class LutTests(unittest.TestCase):
             with self.subTest(text=text), self.assertRaises(ValueError):
                 self.read_fixture(text, ".cube")
 
+    def test_vcgt_gammaramp_import(self):
+        text = "#GammaRamp\n" + "\n".join(f"{i:4} {i * 257:5} {i * 257:5} {i * 257:5}" for i in range(256))
+        self.assertEqual(self.read_fixture(text, ".txt"), [[i / 255 for i in range(256)]] * 3)
+        # A dim ramp must retain its 16-bit scale, regardless of observed maximum.
+        text = "# comment\n\n#gammaramp\n0\t0\t100\t200 # black\n1 255 1023 4095\n"
+        expected = [[0, 255 / 65535], [100 / 65535, 1023 / 65535], [200 / 65535, 4095 / 65535]]
+        for extension in (".txt", ".csv", ".vcgt"):
+            self.assertEqual(self.read_fixture(text, extension), expected)
+        for count in (1, 17, 101, 4096):
+            with self.subTest(count=count):
+                text = "#GammaRamp\n" + "\n".join(f"{i} 65535 32768 0" for i in range(count))
+                self.assertEqual(self.read_fixture(text, ".txt"), [[v] * count for v in (1, 32768 / 65535, 0)])
+
+    def test_vcgt_invalid_rows_and_indices(self):
+        for table in ("", "0 0 0", "0 0 0 0 0", "1 0 0 0", "0 0 0 0\n2 0 0 0",
+                      "0 0 0 0\n0 0 0 0", "0.0 0 0 0", "0 0.5 0 0", "0 nan 0 0",
+                      "0 inf 0 0", "0 -1 0 0", "0 65536 0 0", "0 bad 0 0",
+                      "0 0 0 0\n#GammaRamp", "LUT_3D_SIZE 2\n0 0 0 0"):
+            with self.subTest(table=table), self.assertRaises(ValueError):
+                self.read_fixture("#GammaRamp\n" + table, ".txt")
+        with self.assertRaisesRegex(ValueError, "4097 entries"):
+            self.read_fixture("#GammaRamp\n" + "\n".join(f"{i} 0 0 0" for i in range(4097)), ".txt")
+        with self.assertRaisesRegex(ValueError, "before the RGB table"):
+            self.read_fixture("0 0 0 0\n#GammaRamp", ".txt")
+
     def test_cube_full_range_input_units_preserve_output(self):
         rows = "0 0 0\n0.5 0.49 0.51\n1 0.98 0.99\n"
         expected = [[0, 0.5, 1], [0, 0.49, 0.98], [0, 0.51, 0.99]]

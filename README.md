@@ -8,7 +8,7 @@ Windows GUI for building and editing ICC v4 display profiles with Microsoft Hard
 
 - Create, load, edit, validate, and atomically save ICC v4 display profiles.
 - Edit common tags through dedicated workspaces or raw hexadecimal data.
-- Import 3×3/3×4 matrices from CSV and RGB 1D LUTs from CSV, 1D Cube, or ColourSpace/Quantel TXT.
+- Import 3×3/3×4 matrices from CSV and RGB 1D LUTs from CSV, 1D Cube, ColourSpace/Quantel TXT, or VCGT GammaRamp text.
 - Optionally resample RGB 1D LUTs using pure-Python shape-preserving PCHIP.
 - Calculate a four-color least-squares correction matrix from W/R/G/B measurements.
 - Run without third-party Python packages; NumPy is not required.
@@ -55,15 +55,16 @@ A user reported `Trojan:Win32/Sabsik.TE.A!ml` for the unsigned v0.94 single-file
 
 ## Matrix and RGB 1D LUT input
 
-The expanded Cube-domain and Quantel-header support below is in the current source; the published v0.94.1 package is unchanged.
+The expanded Cube-domain, Quantel-header, and VCGT text support below is in the current source; the published v0.94.1 package is unchanged.
 
 - Matrix: three numeric rows with either three or four columns. Windows stores a 3×4 matrix but ignores the fourth column.
-- **Load RGB 3x1DLUT…** accepts CSV, 1D `.cube`, and ColourSpace/Light Illusion Quantel-style `.txt` with three RGB columns. 3D LUTs are rejected.
+- **Load RGB 3x1DLUT…** accepts CSV, 1D `.cube`, ColourSpace/Light Illusion Quantel-style `.txt`, and VCGT `#GammaRamp` text. 3D LUTs are rejected.
 - MHC2 accepts any LUT size from **1 to 4096 entries**. Imported LUTs preserve their original entry count; power-of-two sizes are not required. A 101-row source writes exactly 101 entries, with no padding, truncation, or automatic resampling. `Entries:` is read-only.
 - CSV values may be normalized `0–1`, or integer-domain `0–255`, `0–1023`, `0–4095`, or `0–65535`; the app detects the range and normalizes to `0–1`. Commas, semicolons, tabs, UTF-8 BOM, blank lines, and `#` comments are accepted.
 - Cube requires `LUT_1D_SIZE` matching the data-row count and finite output values in `0–1`. `TITLE` and comments are optional. IRIDAS/Adobe `DOMAIN_MIN/MAX` and DaVinci Resolve `LUT_1D_INPUT_RANGE` accept zero-based full input ranges such as `0–1`, `0–1023`, `0–65535`, or any finite positive maximum. Input units never scale output values or change sample counts. Omitted bounds default to `0–1`; RGB channel bounds must agree, and mixed declarations must match (tolerance `1e-9`). Partial/non-zero-based domains are rejected because mapping them requires an explicit out-of-domain policy. General scene-linear/shaper Cube outputs outside `0–1` and mixed 1D+3D files are not supported by this MHC2 importer.
 - Quantel TXT accepts textual headers before the table, including ColourSpace `table type 2`, `gMax` (output maximum), `gSize` (exact RGB row count), and `R G B`. Explicit `gMax`, `max value`, `bit depth`, or zero-based `range` metadata (including `#`-prefixed forms) sets normalization; otherwise CSV range detection applies. Conflicting metadata, mismatched `gSize`, unsupported table types, invalid values, and 3D declarations such as `cube size`, `cube data`, `vertices`, or `LUT3D` are rejected. A 12-bit Unity export with `gMax 4095` / `gSize 4096` imports unchanged in length; a 16-bit Unity export with `gSize 65536` exceeds the MHC2 limit and must be exported at 4096 points or fewer. Import never silently downsamples it.
 - The matrix calculator accepts four W/R/G/B rows in either xyY or XYZ form.
+- VCGT text is recognized by `#GammaRamp` and has four whitespace-separated integer columns: `index R G B`. Indices must be consecutive from 0; RGB values are unsigned 16-bit (`0–65535`) and always divided by 65535, even if the ramp's maximum is lower. UTF-8 BOM, blank lines, and `#` comments are accepted. The original 1–4096 points are preserved and loaded into MHC2 without resampling. This imports the supplied text representation, not binary ICC `vcgt` tags, and does not apply a Windows gamma ramp.
 
 ### Optional resampling
 

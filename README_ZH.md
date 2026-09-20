@@ -8,7 +8,7 @@
 
 - 创建、载入、编辑、验证并以原子方式保存 ICC v4 显示器配置文件。
 - 通过专用工作区或原始十六进制数据编辑常见标签。
-- 从 CSV 导入 3×3/3×4 矩阵；从 CSV、1D Cube 或 ColourSpace/Quantel TXT 导入 RGB 1D LUT。
+- 从 CSV 导入 3×3/3×4 矩阵；从 CSV、1D Cube、ColourSpace/Quantel TXT 或 VCGT GammaRamp 文本导入 RGB 1D LUT。
 - 可选用纯 Python、保持曲线形状的 PCHIP 对 RGB 1D LUT 重采样。
 - 根据 W/R/G/B 四色测量数据，以最小二乘法计算校正矩阵。
 - 运行时不依赖第三方 Python 包，也不需要 NumPy。
@@ -55,15 +55,16 @@ build/release-venv/Scripts/python.exe -m pip install --index-url https://pypi.or
 
 ## 矩阵与 RGB 1D LUT 输入
 
-下述扩展的 Cube 输入域及 Quantel 头信息支持已加入当前源码；已发布的 v0.94.1 安装包保持不变。
+下述扩展的 Cube 输入域、Quantel 头信息及 VCGT 文本支持已加入当前源码；已发布的 v0.94.1 安装包保持不变。
 
 - 矩阵：三行数值，每行三列或四列。Windows 以 3×4 格式保存矩阵，但忽略第四列。
-- **Load RGB 3x1DLUT…** 支持 CSV、1D `.cube` 和 ColourSpace/Light Illusion Quantel 风格的 `.txt`，数据为 RGB 三列；拒绝 3D LUT。
+- **Load RGB 3x1DLUT…** 支持 CSV、1D `.cube`、ColourSpace/Light Illusion Quantel 风格的 `.txt` 及 VCGT `#GammaRamp` 文本；拒绝 3D LUT。
 - MHC2 支持 **1–4096 的任意条目数**，不要求是 2 的幂。导入保留原始采样数量：101 行源数据就写入 101 个条目，不补点、不截断、不自动重采样；`Entries:` 保持只读。
 - CSV 可使用归一化的 `0–1`，或整数范围 `0–255`、`0–1023`、`0–4095`、`0–65535`；应用检测范围并归一化到 `0–1`。支持逗号、分号、制表符、UTF-8 BOM、空行及 `#` 注释。
 - Cube 必须包含与数据行数一致的 `LUT_1D_SIZE`，输出值须为 `0–1` 内的有限数值；可带 `TITLE` 和注释。支持 IRIDAS/Adobe 的 `DOMAIN_MIN/MAX` 及 DaVinci Resolve 的 `LUT_1D_INPUT_RANGE`，接受 `0–1`、`0–1023`、`0–65535` 等以零起始、上限为任意有限正数的完整输入域。输入域单位不会缩放输出值，也不会改变采样数量。省略的边界按 `0–1` 处理；RGB 通道边界须一致，混合声明须匹配（容差 `1e-9`）。部分范围或非零起点需要明确的域外处理策略，因此拒绝导入。本 MHC2 导入器不支持输出超出 `0–1` 的一般场景线性／shaper Cube，也不支持混合 1D+3D 文件。
 - Quantel TXT 允许数据表前的文字头，支持 ColourSpace 的 `table type 2`、`gMax`（输出最大值）、`gSize`（准确的 RGB 行数）及 `R G B` 列名。显式的 `gMax`、`max value`、`bit depth` 或零起点 `range` 元数据（包括 `#` 前缀形式）决定归一化范围；否则采用 CSV 范围检测。拒绝冲突元数据、`gSize` 不匹配、不支持的表类型、无效数值及 `cube size`、`cube data`、`vertices`、`LUT3D` 等 3D 声明。12-bit Unity 的 `gMax 4095` / `gSize 4096` 保持 4096 点导入；16-bit Unity 的 `gSize 65536` 超过 MHC2 上限，须另行导出为不超过 4096 点的 LUT，导入不会偷偷降采样。
 - 矩阵计算器接受 xyY 或 XYZ 格式的 W/R/G/B 四行数据。
+- VCGT 文本通过 `#GammaRamp` 标记识别，每行为以空白分隔的四列整数：`索引 R G B`。索引须从 0 连续递增，RGB 为 16-bit 无符号值（`0–65535`），即使曲线最大值较低，也固定除以 65535。支持 UTF-8 BOM、空行及 `#` 注释；保留原始 1–4096 点并载入 MHC2，不自动重采样。本次支持的是所提供的文本表示，不读取 ICC 内嵌的二进制 `vcgt` 标签，也不会直接应用 Windows gamma ramp。
 
 ### 可选重采样
 
