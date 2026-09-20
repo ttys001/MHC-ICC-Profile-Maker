@@ -16,7 +16,7 @@ Windows GUI for building and editing ICC v4 display profiles with Microsoft Hard
 
 ## Download
 
-Download the current Windows executable from [GitHub Releases](https://github.com/ttys001/MHC-ICC-Profile-Maker/releases).
+Download the Windows x64 ZIP from [GitHub Releases](https://github.com/ttys001/MHC-ICC-Profile-Maker/releases). Extract the entire folder and run the EXE inside it. Keep the `_internal` folder beside the EXE; Python does not need to be installed.
 
 ## Requirements
 
@@ -32,11 +32,19 @@ python mhc_icc_gui.py
 python -S -m unittest -v
 ```
 
-Build the optimized single-file Windows executable:
+Build the directory-based Windows package in an isolated environment (64-bit Python):
 
 ```powershell
-python -m PyInstaller --noconfirm --clean --onefile --windowed --optimize 2 --name "MHC-ICC-Profile-Maker_v0.94" mhc_icc_gui.py
+python -m venv build/release-venv
+build/release-venv/Scripts/python.exe -m pip install --index-url https://pypi.org/simple PyInstaller==6.22.3
+./build-release.ps1 -Python ./build/release-venv/Scripts/python.exe
 ```
+
+The build script produces a versioned ZIP and SHA-256 file in `dist`. It uses `--onedir --noupx`, includes the license, and refuses to overwrite an existing release. Version 0.94.1 updates packaging and increases the default window height so the MHC2 workspace, including Resample, fits without scrolling at the tested display scaling. LUT and ICC behavior is unchanged; scrolling remains available for smaller windows or larger display scaling.
+
+### Defender detection on v0.94
+
+A user reported `Trojan:Win32/Sabsik.TE.A!ml` for the unsigned v0.94 single-file EXE. The replacement uses a directory package without runtime self-extraction. This is a packaging mitigation, not confirmation of a false positive or a guarantee of acceptance on another computer. Do not disable Defender or add an exclusion. If blocked, use the Python source with the command above, and report the file hash and detection to [Microsoft Security Intelligence](https://www.microsoft.com/en-us/wdsi/filesubmission). SmartScreen publisher reputation and Defender malware detections are separate checks; this package is still unsigned.
 
 ## Quick workflow
 

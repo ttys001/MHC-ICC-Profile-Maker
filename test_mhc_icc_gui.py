@@ -308,6 +308,22 @@ class ProfileMakerTests(unittest.TestCase):
         )
         self.app.reset_profile()
 
+    def test_mhc2_workspace_fits_default_window(self):
+        self.root.geometry("1200x800")
+        self.app.reset_profile()
+        tag = next(t for t in self.app.tags if t.signature == "MHC2")
+        self.app.selected_tag = tag
+        self.app.render_mhc2_workspace(tag)
+        self.app.show_mhc2_workspace()
+        self.root.deiconify()
+        try:
+            self.root.update()
+            self.assertLessEqual(self.app.mhc2_frame.winfo_reqheight(), self.app.mhc2_scroll.canvas.winfo_height())
+            self.assertLessEqual(self.app.mhc2_frame.winfo_reqwidth(), self.app.mhc2_scroll.canvas.winfo_width())
+        finally:
+            self.root.withdraw()
+            self.app.reset_profile()
+
     def test_v092_profile_bytes_for_defaults_and_csv(self):
         class FixedDateTime(datetime):
             @classmethod

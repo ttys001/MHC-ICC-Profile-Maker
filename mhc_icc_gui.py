@@ -10,7 +10,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 from typing import Dict, List, Tuple
 
-APP_VERSION = "0.94"
+APP_VERSION = "0.94.1"
 
 
 DEVICE_CLASSES: Dict[str, str] = {
@@ -1322,7 +1322,7 @@ class ICCBuilderApp:
 
         # Preview table (first five, ellipsis, last five rows, 3 columns)
         preview = ttk.LabelFrame(lut_frame, text="Preview (normalized)")
-        preview.grid(row=0, column=2, rowspan=6, padx=(12, 4), pady=4, sticky="nsew")
+        preview.grid(row=0, column=2, rowspan=7, padx=(12, 4), pady=4, sticky="nsew")
         header_row = ttk.Frame(preview)
         header_row.pack(anchor="w", padx=4, pady=(4, 2))
         ttk.Label(header_row, text="", width=6).grid(row=0, column=0, padx=(0, 4))
@@ -2868,7 +2868,7 @@ class ICCBuilderApp:
 
 def main():
     root = tk.Tk()
-    root.geometry("1200x720")
+    root.geometry("1200x800")
     root.minsize(900, 600)
     ICCBuilderApp(root)
     root.mainloop()

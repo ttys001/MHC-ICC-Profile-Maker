@@ -16,7 +16,7 @@
 
 ## 下载
 
-从 [GitHub Releases](https://github.com/ttys001/MHC-ICC-Profile-Maker/releases) 下载当前 Windows 可执行文件。
+从 [GitHub Releases](https://github.com/ttys001/MHC-ICC-Profile-Maker/releases) 下载 Windows x64 ZIP，完整解压后运行文件夹中的 EXE。请保留 EXE 旁的 `_internal` 文件夹；无需安装 Python。
 
 ## 系统要求
 
@@ -32,11 +32,19 @@ python mhc_icc_gui.py
 python -S -m unittest -v
 ```
 
-构建优化后的单文件 Windows 可执行程序：
+使用隔离环境构建 Windows 目录包（需要 64 位 Python）：
 
 ```powershell
-python -m PyInstaller --noconfirm --clean --onefile --windowed --optimize 2 --name "MHC-ICC-Profile-Maker_v0.94" mhc_icc_gui.py
+python -m venv build/release-venv
+build/release-venv/Scripts/python.exe -m pip install --index-url https://pypi.org/simple PyInstaller==6.22.3
+./build-release.ps1 -Python ./build/release-venv/Scripts/python.exe
 ```
+
+构建脚本在 `dist` 中生成带版本号的 ZIP 和 SHA-256 文件，使用 `--onedir --noupx`，附带许可证，并拒绝覆盖已有发布文件。0.94.1 调整打包并增加默认窗口高度，在已测试的显示缩放下，无需下滑即可完整显示 MHC2 工作区及 Resample 按钮。LUT 与 ICC 行为不变；较小窗口或更大的显示缩放仍可使用滚动条。
+
+### v0.94 的 Defender 检测报告
+
+有用户反馈未签名的 v0.94 单文件 EXE 被检测为 `Trojan:Win32/Sabsik.TE.A!ml`。替代版本改用无需运行时自解压的目录包。这是打包层面的缓解措施，不能据此确认误报，也不能保证另一台电脑一定放行。请勿关闭 Defender 或添加排除项。如仍被拦截，可按上方命令从 Python 源码运行，并将文件哈希和检测信息提交至 [Microsoft Security Intelligence](https://www.microsoft.com/en-us/wdsi/filesubmission)。SmartScreen 发布者信誉提示与 Defender 恶意软件检测是不同的检查；此安装包仍未签名。
 
 ## 快速工作流程
 
