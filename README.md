@@ -8,7 +8,8 @@ Windows GUI for building and editing ICC v4 display profiles with Microsoft Hard
 
 - Create, load, edit, validate, and atomically save ICC v4 display profiles.
 - Edit common tags through dedicated workspaces or raw hexadecimal data.
-- Import 3×3/3×4 matrices and RGB 1D LUTs from CSV.
+- Import 3×3/3×4 matrices from CSV and RGB 1D LUTs from CSV, 1D Cube, or ColourSpace/Quantel TXT.
+- Optionally resample RGB 1D LUTs using pure-Python shape-preserving PCHIP.
 - Calculate a four-color least-squares correction matrix from W/R/G/B measurements.
 - Run without third-party Python packages; NumPy is not required.
 - Use the included SDR and HDR profiles and reports as practical examples.
@@ -34,7 +35,7 @@ python -S -m unittest -v
 Build the optimized single-file Windows executable:
 
 ```powershell
-python -m PyInstaller --noconfirm --clean --onefile --windowed --optimize 2 --name "MHC-ICC-Profile-Maker_v0.93" mhc_icc_gui.py
+python -m PyInstaller --noconfirm --clean --onefile --windowed --optimize 2 --name "MHC-ICC-Profile-Maker_v0.94" mhc_icc_gui.py
 ```
 
 ## Quick workflow
@@ -44,13 +45,23 @@ python -m PyInstaller --noconfirm --clean --onefile --windowed --optimize 2 --na
 3. Save the profile. The app updates the creation time, profile size, and ICC profile ID.
 4. Validate the result on the target Windows system and display before relying on it.
 
-## CSV input
+## Matrix and RGB 1D LUT input
 
 - Matrix: three numeric rows with either three or four columns. Windows stores a 3×4 matrix but ignores the fourth column.
-- RGB 1D LUT: 1–4096 rows with R, G, and B columns.
-- LUT values may be normalized `0–1`, or integer-domain `0–255`, `0–1023`, `0–4095`, or `0–65535`; the app normalizes them to `0–1`.
-- Commas, semicolons, and tabs are accepted. Lines beginning with `#` are comments.
+- **Load RGB 3x1DLUT…** accepts CSV, 1D `.cube`, and ColourSpace/Light Illusion Quantel-style `.txt` with three RGB columns. 3D LUTs are rejected.
+- MHC2 accepts any LUT size from **1 to 4096 entries**. Imported LUTs preserve their original entry count; power-of-two sizes are not required. A 101-row source writes exactly 101 entries, with no padding, truncation, or automatic resampling. `Entries:` is read-only.
+- CSV values may be normalized `0–1`, or integer-domain `0–255`, `0–1023`, `0–4095`, or `0–65535`; the app detects the range and normalizes to `0–1`. Commas, semicolons, tabs, UTF-8 BOM, blank lines, and `#` comments are accepted.
+- Cube requires `LUT_1D_SIZE` matching the data-row count and normalized output values. `TITLE` and comments are optional. The input domain must be omitted or `DOMAIN_MIN 0 0 0` / `DOMAIN_MAX 1 1 1`; other domains are rejected, not used as output scaling.
+- Quantel TXT accepts textual headers before the table. Explicit `max value 1023`, `max value 65535`, `bit depth 10`, or `range 0 1023` metadata (including `#`-prefixed metadata) sets normalization. Without metadata, the CSV range detection applies. Conflicting metadata, invalid values, and 3D declarations such as `cube size`, `cube data`, `vertices`, or `LUT3D` are rejected.
 - The matrix calculator accepts four W/R/G/B rows in either xyY or XYZ form.
+
+### Optional resampling
+
+Default: **import → preserve source samples → write that exact count into MHC2**. Choose **Resample 1DLUT…** explicitly to convert the current LUT to any target from 1–4096 entries. 4096 is an optional maximum, not a requirement; importing never resamples.
+
+The stdlib-only PCHIP implementation preserves local shape and monotonic sections without spline ringing or repairing non-monotonic source curves. Source black and white endpoints are preserved exactly for targets of at least two entries, including calibrated white values below 1. A one-point source expands as a constant; two source points interpolate linearly. A one-entry target keeps the first source sample (it cannot retain both endpoints); an unchanged count makes no numerical changes.
+
+Parsing and resampling retain Python float precision in the workspace. Only ICC serialization quantizes to s15Fixed16; reopening a saved profile reads those quantized values. This supports comparing the native LUT with an explicitly PCHIP-resampled LUT through the Windows/hardware pipeline; software checks do not establish the measured display result.
 
 ## Default profile
 
@@ -67,7 +78,7 @@ python -m PyInstaller --noconfirm --clean --onefile --windowed --optimize 2 --na
 | Text | `Copyright (C) User.` and `Default Device Profile` |
 | MSCA | `{'Appversion':'1.0.152.0','D65Adapted':True}` |
 
-The MSCA app version was checked against Microsoft’s live Store catalog on 2026-07-30 and matches Windows HDR Calibration `1.0.152.0`. MSCA is a private Microsoft tag; changing only its version string does not reproduce another app version’s behavior.
+The MSCA app version was rechecked against [Microsoft’s live Store catalog](https://displaycatalog.mp.microsoft.com/v7.0/products/9N7F2SM5D1LR?market=US&languages=en-US) on 2026-09-20. The current listed Windows HDR Calibration package remains `1.0.152.0`, so the preset field is already current. MSCA is a private Microsoft tag; changing only its version string does not reproduce another app version’s behavior.
 
 ## Essential MHC2 rules
 

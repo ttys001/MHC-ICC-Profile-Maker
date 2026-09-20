@@ -7,10 +7,10 @@ import tkinter as tk
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, simpledialog, ttk
 from typing import Dict, List, Tuple
 
-APP_VERSION = "0.93"
+APP_VERSION = "0.94"
 
 
 DEVICE_CLASSES: Dict[str, str] = {
@@ -192,18 +192,180 @@ def read_mhc2_matrix(path: str) -> List[List[float]]:
 
 
 def read_mhc2_lut(path: str) -> List[List[float]]:
+    text = Path(path).read_text(encoding="utf-8-sig")
+    reject_3d_lut(text)
+    extension = Path(path).suffix.lower()
+    if extension == ".cube" or re.search(r"(?im)^\s*LUT_1D_SIZE\b", text):
+        return read_mhc2_lut_cube(path)
+    if extension == ".txt":
+        return read_mhc2_lut_quantel_txt(path)
+    return read_mhc2_lut_csv(path)
+
+
+def reject_3d_lut(text: str):
+    # Quantel declarations can be comment-prefixed, including cube data/vertices.
+    if re.search(r"(?im)^\s*#?\s*(?:LUT[_ -]?3D(?:\b|_)|3D\b|cube\s+(?:size|data)\b|vertices\b|(?:Quantel|SAM)\b[^\n]*\bcube\b)", text):
+        raise ValueError("Only RGB 1D LUTs are accepted; 3D LUTs are unsupported.")
+
+
+def normalize_lut_rows(rows: List[List[float]], normalization: float | None = None) -> List[List[float]]:
+    if not 1 <= len(rows) <= 4096:
+        raise ValueError("Entry count must be between 1 and 4096.")
+    if any(len(row) != 3 for row in rows):
+        raise ValueError("Each LUT row must contain exactly three RGB values.")
+    if not all(math.isfinite(value) for row in rows for value in row):
+        raise ValueError("LUT values must be finite numbers.")
+    minimum = min(value for row in rows for value in row)
+    maximum = max(value for row in rows for value in row)
+    if normalization is None:
+        normalization = next((limit for limit in (1.0, 255.0, 1023.0, 4095.0, 65535.0) if maximum <= limit), 65535.0)
+    if not math.isfinite(normalization) or normalization <= 0:
+        raise ValueError("LUT maximum must be a finite positive number.")
+    if minimum < 0 or maximum > normalization:
+        raise ValueError(f"LUT values must be between 0 and {normalization:g}.")
+    return [[row[channel] / normalization for row in rows] for channel in range(3)]
+
+
+def read_mhc2_lut_csv(path: str) -> List[List[float]]:
+    reject_3d_lut(Path(path).read_text(encoding="utf-8-sig"))
     rows = read_numeric_csv(path)
     if any(len(row) < 3 for row in rows):
         raise ValueError("Each LUT row must contain R, G, and B values.")
-    rows = [row[:3] for row in rows]
-    if not 1 <= len(rows) <= 4096:
-        raise ValueError("Entry count must be between 1 and 4096.")
-    minimum = min(value for row in rows for value in row)
-    maximum = max(value for row in rows for value in row)
-    if minimum < 0 or maximum > 65535:
-        raise ValueError("LUT values must be between 0 and 65535.")
-    normalization = next((limit for limit in (1.0, 255.0, 1023.0, 4095.0, 65535.0) if maximum <= limit))
-    return [[row[channel] / normalization for row in rows] for channel in range(3)]
+    return normalize_lut_rows([row[:3] for row in rows])
+
+
+def read_mhc2_lut_cube(path: str) -> List[List[float]]:
+    text = Path(path).read_text(encoding="utf-8-sig")
+    reject_3d_lut(text)
+    rows = []
+    declarations = set()
+    count = None
+    for number, line in enumerate(text.splitlines(), 1):
+        cells = line.split("#", 1)[0].split()
+        if not cells:
+            continue
+        key = cells[0].upper()
+        if key in {"TITLE", "LUT_1D_SIZE", "DOMAIN_MIN", "DOMAIN_MAX"}:
+            if rows or key in declarations:
+                raise ValueError(f"Invalid or duplicate Cube declaration on line {number}.")
+            declarations.add(key)
+            if key == "TITLE":
+                continue
+            if key == "LUT_1D_SIZE":
+                if len(cells) != 2:
+                    raise ValueError("LUT_1D_SIZE requires one entry count.")
+                count = int(cells[1])
+                if not 1 <= count <= 4096:
+                    raise ValueError("Entry count must be between 1 and 4096.")
+            else:
+                domain = [float(value) for value in cells[1:]]
+                expected = 0.0 if key == "DOMAIN_MIN" else 1.0
+                if len(domain) != 3 or not all(math.isfinite(v) and abs(v - expected) <= 1e-9 for v in domain):
+                    raise ValueError("Only the normalized Cube input domain 0–1 is supported.")
+        else:
+            try:
+                rows.append([float(value) for value in cells])
+            except ValueError as exc:
+                raise ValueError(f"Invalid Cube RGB row on line {number}.") from exc
+    if count is None:
+        raise ValueError("Cube requires LUT_1D_SIZE.")
+    if len(rows) != count:
+        raise ValueError("LUT_1D_SIZE does not match the RGB data-row count.")
+    return normalize_lut_rows(rows, 1.0)
+
+
+def read_mhc2_lut_quantel_txt(path: str) -> List[List[float]]:
+    text = Path(path).read_text(encoding="utf-8-sig")
+    reject_3d_lut(text)
+    rows = []
+    normalization = None
+    for number, raw in enumerate(text.splitlines(), 1):
+        header = raw.strip().lstrip("#").strip()
+        metadata = re.match(r"(?i)^(max(?:imum)?\s+value|bit[ _-]?depth|range)\b\s*[:=]?\s*(.*?)\s*(?:#.*)?$", header)
+        if metadata:
+            key, value = metadata.groups()
+            if key.lower() == "range":
+                bounds = re.split(r"\s*(?:\.\.|\s+to\s+|\s+|–|-)\s*", value)
+                if len(bounds) != 2 or float(bounds[0]) != 0:
+                    raise ValueError("Only a zero-based Quantel range is supported.")
+                maximum = float(bounds[1])
+            elif re.match(r"(?i)bit", key):
+                bits = int(value)
+                if not 1 <= bits <= 16:
+                    raise ValueError("Quantel bit depth must be between 1 and 16.")
+                maximum = float(2 ** bits - 1)
+            else:
+                maximum = float(value)
+            if not math.isfinite(maximum) or not 0 < maximum <= 65535:
+                raise ValueError("Quantel maximum must be positive and at most 65535.")
+            if normalization is not None and normalization != maximum:
+                raise ValueError("Conflicting Quantel numeric-range metadata.")
+            normalization = maximum
+            continue
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        cells = re.split(r"[\s,;]+", line)
+        try:
+            row = [float(value) for value in cells]
+        except ValueError as exc:
+            if rows or re.match(r"[+\-.\d]", line):
+                raise ValueError(f"Invalid Quantel RGB row on line {number}.") from exc
+            continue  # Harmless version/title/column headers before the table.
+        rows.append(row)
+    return normalize_lut_rows(rows, normalization)
+
+
+def resample_mhc2_lut(lut: List[List[float]], target: int) -> List[List[float]]:
+    """Uniform-grid PCHIP; a one-entry target samples x=0 (the first value)."""
+    if not isinstance(target, int) or not 1 <= target <= 4096:
+        raise ValueError("Target entry count must be between 1 and 4096.")
+    if len(lut) != 3 or not 1 <= len(lut[0]) <= 4096 or any(len(ch) != len(lut[0]) for ch in lut):
+        raise ValueError("Expected three RGB channels with 1–4096 entries each.")
+    if not all(math.isfinite(v) and 0 <= v <= 1 for ch in lut for v in ch):
+        raise ValueError("LUT values must be finite numbers from 0 to 1.")
+    count = len(lut[0])
+    if count == target:
+        return [ch[:] for ch in lut]
+    if target == 1:
+        return [[ch[0]] for ch in lut]
+    if count == 1:
+        return [[ch[0]] * target for ch in lut]
+
+    def endpoint(a, b):
+        slope = (3 * a - b) / 2
+        if slope * a <= 0:
+            return 0.0
+        return math.copysign(min(abs(slope), 3 * abs(a)), a) if a * b <= 0 else slope
+
+    result = []
+    for channel in lut:
+        # Work in source-index coordinates: uniform h=1 makes the weighted
+        # harmonic mean 2/(1/a+1/b), with identical normalized-domain results.
+        delta = [b - a for a, b in zip(channel, channel[1:])]
+        if count >= 3:
+            derivatives = [endpoint(delta[0], delta[1])]
+            derivatives.extend(0.0 if a * b <= 0 else 2 / (1 / a + 1 / b) for a, b in zip(delta, delta[1:]))
+            derivatives.append(endpoint(delta[-1], delta[-2]))
+        output = [channel[0]]
+        for j in range(1, target - 1):
+            index, remainder = divmod(j * (count - 1), target - 1)
+            t = remainder / (target - 1)
+            if remainder == 0 or delta[index] == 0:
+                value = channel[index]
+            elif count == 2:
+                value = channel[0] + t * delta[0]
+            else:
+                value = ((2*t**3 - 3*t**2 + 1) * channel[index]
+                         + (t**3 - 2*t**2 + t) * derivatives[index]
+                         + (-2*t**3 + 3*t**2) * channel[index + 1]
+                         + (t**3 - t**2) * derivatives[index + 1])
+            if not math.isfinite(value) or not -1e-12 <= value <= 1 + 1e-12:
+                raise ValueError("PCHIP produced a value outside 0–1.")
+            output.append(min(1.0, max(0.0, value)))
+        output.append(channel[-1])
+        result.append(output)
+    return result
 
 
 def least_squares_4x3(a: List[List[float]], b: List[List[float]]) -> List[List[float]]:
@@ -1154,8 +1316,9 @@ class ICCBuilderApp:
         ttk.Entry(lut_frame, textvariable=self.mhc2_lut_b, width=18, state="readonly").grid(row=2, column=1, padx=4)
         ttk.Label(lut_frame, text="Entries:").grid(row=3, column=0, sticky="w", padx=4, pady=2)
         ttk.Entry(lut_frame, textvariable=self.mhc2_entries, width=10, state="readonly").grid(row=3, column=1, padx=4, sticky="w")
-        ttk.Button(lut_frame, text="Load RGB 3x1DLUT CSV…", command=self.load_mhc2_lut_csv).grid(row=4, column=0, columnspan=2, sticky="w", padx=4, pady=(4, 2))
+        ttk.Button(lut_frame, text="Load RGB 3x1DLUT…", command=self.load_mhc2_lut).grid(row=4, column=0, columnspan=2, sticky="w", padx=4, pady=(4, 2))
         ttk.Button(lut_frame, text="Apply Identity 1DLUT", command=self.apply_mhc2_identity_lut).grid(row=5, column=0, columnspan=2, sticky="w", padx=4, pady=(2, 4))
+        ttk.Button(lut_frame, text="Resample 1DLUT…", command=self.resample_mhc2_lut).grid(row=6, column=0, columnspan=2, sticky="w", padx=4, pady=(2, 4))
 
         # Preview table (first five, ellipsis, last five rows, 3 columns)
         preview = ttk.LabelFrame(lut_frame, text="Preview (normalized)")
@@ -1707,8 +1870,13 @@ class ICCBuilderApp:
         for idx, val in enumerate(matrix_vals):
             r, c = divmod(idx, 4)
             self.mhc2_matrix_vars[r][c].set(f"{val:.6f}")
-        self.mhc2_lut_values = parsed.get("lut_values", None)
-        self.update_mhc2_lut_preview(parsed.get("lut_values"), parsed.get("lut_entries", 0))
+        # Retain processing precision across UI refreshes; reload after raw edits
+        # or a different profile/tag, where serialized samples are authoritative.
+        source = getattr(self, "mhc2_float_source", None)
+        if source is None or source[0] is not tag or source[1] != tag.data_hex:
+            self.mhc2_lut_values = parsed.get("lut_values")
+            self.mhc2_float_source = (tag, tag.data_hex)
+        self.update_mhc2_lut_preview(self.mhc2_lut_values, parsed["lut_entries"])
         if popup and status is not None and status:
             messagebox.showinfo("MHC2", status)
 
@@ -1941,11 +2109,13 @@ class ICCBuilderApp:
             messagebox.showerror("Invalid MHC2", f"Failed to rebuild MHC2:\n{exc}")
             return
         self.selected_tag.data_hex = new_bytes.hex().upper()
+        self.mhc2_float_source = (self.selected_tag, self.selected_tag.data_hex)
         # Refresh UI and offsets with the rebuilt data
         self.render_mhc2_workspace(self.selected_tag, status=status_msg, popup=popup)
         self.refresh_tag_table(select_signature="MHC2")
         if self.workspace_mode == "hex":
             self.render_hex_view(self.selected_tag.data_bytes())
+        return True
 
     def rebuild_mhc2_from_fields(self, entries: int | None = None, status_msg: str = "Updated MHC2."):
         try:
@@ -1955,7 +2125,7 @@ class ICCBuilderApp:
         except ValueError:
             messagebox.showerror("Invalid MHC2", "Luminance and LUT entry count must be numeric.")
             return
-        self.rebuild_mhc2_from_ui(min_nits, peak_nits, count, status_msg=status_msg)
+        return self.rebuild_mhc2_from_ui(min_nits, peak_nits, count, status_msg=status_msg)
 
     def parse_trc(self, data: bytes):
         if len(data) < 12 or data[:4] != b"curv":
@@ -1997,26 +2167,46 @@ class ICCBuilderApp:
                 idx += 1
         self.rebuild_mhc2_from_fields(status_msg="Matrix updated successfully.")
 
-    def load_mhc2_lut_csv(self):
+    def load_mhc2_lut(self):
         path = filedialog.askopenfilename(
-            title="Load RGB LUT CSV",
-            filetypes=[("CSV files", "*.csv"), ("Text files", "*.txt"), ("All files", "*.*")],
+            title="Load RGB 1D LUT",
+            filetypes=[("1D LUT files", "*.csv *.cube *.txt"), ("CSV files", "*.csv"),
+                       ("Cube files", "*.cube"), ("Text / Quantel files", "*.txt"), ("All files", "*.*")],
         )
         if not path:
             return
         try:
             lut = read_mhc2_lut(path)
-            n = len(lut[0])
-            self.mhc2_lut_values = lut
-            self.mhc2_entries.set(str(n))
-            self.rebuild_mhc2_from_fields(n, "1DLUT updated successfully.")
+            self.replace_mhc2_lut(lut, "1DLUT updated successfully.")
         except Exception as exc:
             messagebox.showerror("Load failed", f"Could not load LUT:\n{exc}")
 
+    def replace_mhc2_lut(self, lut, status):
+        previous = self.mhc2_lut_values
+        self.mhc2_lut_values = lut
+        if not self.rebuild_mhc2_from_fields(len(lut[0]), status):
+            self.mhc2_lut_values = previous
+
+    def resample_mhc2_lut(self):
+        lut = self.mhc2_lut_values
+        if not lut:
+            messagebox.showerror("Resample 1DLUT", "Load or apply a 1D LUT first.")
+            return
+        count = len(lut[0])
+        target = simpledialog.askinteger(
+            "Resample 1DLUT", f"Current: {count} entries\nTarget entry count: [1–4096]\nA target of 1 keeps the first sample.",
+            parent=self.root, initialvalue=4096, minvalue=1, maxvalue=4096,
+        )
+        if target is None or target == count:
+            return
+        try:
+            self.replace_mhc2_lut(resample_mhc2_lut(lut, target),
+                                  f"1DLUT resampled from {count} to {target} entries using PCHIP.")
+        except ValueError as exc:
+            messagebox.showerror("Resample failed", str(exc))
+
     def apply_mhc2_identity_lut(self):
-        self.mhc2_lut_values = [[0.0, 1.0] for _ in range(3)]
-        self.mhc2_entries.set("2")
-        self.rebuild_mhc2_from_fields(2, "1DLUT updated successfully.")
+        self.replace_mhc2_lut([[0.0, 1.0] for _ in range(3)], "1DLUT updated successfully.")
 
     def show_four_color_matrix_calculator(self):
         win = tk.Toplevel(self.root)

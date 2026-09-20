@@ -1,4 +1,6 @@
 import hashlib
+import math
+import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
@@ -14,8 +16,107 @@ from mhc_icc_gui import (
     read_mhc2_lut,
     read_mhc2_matrix,
     read_numeric_csv,
+    resample_mhc2_lut,
     xyY_to_XYZ_custom,
 )
+
+
+class LutTests(unittest.TestCase):
+    def read_fixture(self, text, suffix):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / ("lut" + suffix)
+            path.write_text(text, encoding="utf-8-sig")
+            return read_mhc2_lut(str(path))
+
+    def test_csv_counts_and_domains(self):
+        for count in (1, 2, 3, 17, 33, 65, 101, 128, 257, 511, 1000, 2047, 4095, 4096):
+            with self.subTest(count=count):
+                lut = self.read_fixture("0.1,0.2,0.3\n" * count, ".csv")
+                self.assertEqual(lut, [[v] * count for v in (0.1, 0.2, 0.3)])
+        for maximum in (1, 255, 1023, 4095, 65535):
+            for delimiter in (",", ";", "\t"):
+                with self.subTest(maximum=maximum, delimiter=delimiter):
+                    lut = self.read_fixture("# comment\n\n" + delimiter.join(map(str, (0, maximum / 2, maximum))), ".csv")
+                    self.assertEqual(lut, [[0], [0.5], [1]])
+        for text in ("", "0,0,0\n" * 4097, "nan,0,0", "0,inf,0", "-1,0,0", "65536,0,0", "0,0"):
+            with self.subTest(text=text[:30]), self.assertRaises(ValueError):
+                self.read_fixture(text, ".csv")
+
+    def test_cube(self):
+        for count in (1, 65, 101, 4096):
+            text = f'TITLE "Calibration"\n# comment\nLUT_1D_SIZE {count}\nDOMAIN_MIN 0 0 0\nDOMAIN_MAX 1 1 1\n\n' + "0.1 0.5 0.9725 # sample\n" * count
+            self.assertEqual(self.read_fixture(text, ".cube"), [[v] * count for v in (0.1, 0.5, 0.9725)])
+        self.assertEqual(self.read_fixture("LUT_1D_SIZE 1\n0 0 0", ".unknown"), [[0]] * 3)
+        for text in ("0 0 0", "LUT_1D_SIZE 2\n0 0 0", "LUT_1D_SIZE 4097", "LUT_1D_SIZE 0",
+                     "LUT_1D_SIZE 1\n0 0", "LUT_1D_SIZE 1\n0 0 0 0", "LUT_1D_SIZE 1\n0 no 0",
+                     "LUT_1D_SIZE 1\n1.1 0 0", "LUT_1D_SIZE 1\nnan 0 0",
+                     "LUT_1D_SIZE 1\nDOMAIN_MIN -1 0 0\n0 0 0",
+                     "LUT_1D_SIZE 1\nDOMAIN_MAX 2 2 2\n0 0 0",
+                     "LUT_1D_SIZE 1\nDOMAIN_MAX nan 1 1\n0 0 0"):
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                self.read_fixture(text, ".cube")
+
+    def test_quantel_metadata_and_counts(self):
+        for count in (65, 101, 256, 4096):
+            for maximum in (1023, 65535):
+                text = f"# ColourSpace Quantel 1D\nVersion 1\n#max value {maximum}\nR G B\n\n" + "0 100 200\n" * count
+                self.assertEqual(self.read_fixture(text, ".txt"), [[v / maximum] * count for v in (0, 100, 200)])
+        for metadata in ("bit depth 10", "range 0 1023", "range 0-1023", "max value: 1023"):
+            self.assertEqual(self.read_fixture(metadata + "\n0 100 200", ".txt"), [[0], [100 / 1023], [200 / 1023]])
+        self.assertEqual(self.read_fixture("ColourSpace\n0 100 255", ".txt"), [[0], [100 / 255], [1]])
+        for text in ("", "0 0 0\n" * 4097, "max value 1023\n0 0 1024", "max value nan\n0 0 0",
+                     "max value 0\n0 0 0", "max value 1023\nbit depth 16\n0 0 0",
+                     "0 bad 0\n0 0 0", "0 0", "0 0 0\nbad data", "0 nan 0"):
+            with self.subTest(text=text[:60]), self.assertRaises(ValueError):
+                self.read_fixture(text, ".txt")
+
+    def test_3d_rejected_even_with_small_table_or_wrong_extension(self):
+        for marker in ("LUT_3D_SIZE 2", "LUT3D", "cube size 2", "#cube data", "#vertices 2", "SAM cube 2"):
+            for suffix in (".cube", ".txt", ".csv", ".unknown"):
+                with self.subTest(marker=marker, suffix=suffix), self.assertRaisesRegex(ValueError, "Only RGB 1D"):
+                    self.read_fixture(marker + "\n0 0 0\n" * 8, suffix)
+
+    def test_pchip_identity_and_arbitrary_counts(self):
+        for count, target in ((2, 17), (3, 65), (65, 4096), (101, 4096), (257, 1000), (1000, 4096)):
+            lut = [[i / (count - 1) for i in range(count)]] * 3
+            result = resample_mhc2_lut(lut, target)
+            self.assertEqual([len(ch) for ch in result], [target] * 3)
+            for channel in result:
+                for i, value in enumerate(channel):
+                    self.assertAlmostEqual(value, i / (target - 1), places=14)
+
+    def test_pchip_shapes_and_endpoints(self):
+        for channel in ([0.03 + 0.9425 * (i / 64) ** 2.2 for i in range(65)],
+                        [0.9, 0.8, 0.8, 0.2, 0.1], [0.1, 0.8, 0.2, 0.2, 0.9], [0.37] * 17):
+            output = resample_mhc2_lut([channel] * 3, 4096)[0]
+            self.assertEqual((output[0], output[-1]), (channel[0], channel[-1]))
+            for j, value in enumerate(output):
+                index = min(j * (len(channel) - 1) // 4095, len(channel) - 2)
+                self.assertGreaterEqual(value + 1e-14, min(channel[index:index + 2]))
+                self.assertLessEqual(value - 1e-14, max(channel[index:index + 2]))
+                self.assertTrue(math.isfinite(value) and 0 <= value <= 1)
+            if all(a <= b for a, b in zip(channel, channel[1:])):
+                self.assertTrue(all(a <= b + 1e-14 for a, b in zip(output, output[1:])))
+            if all(a >= b for a, b in zip(channel, channel[1:])):
+                self.assertTrue(all(a + 1e-14 >= b for a, b in zip(output, output[1:])))
+        # Independent exact Hermite values: slopes [0, 3/8, 1] for [0, 1/4, 1].
+        self.assertEqual(resample_mhc2_lut([[0, 0.25, 1]] * 3, 5)[0], [0, 0.078125, 0.25, 0.546875, 1])
+
+    def test_pchip_special_cases_and_validation(self):
+        self.assertEqual(resample_mhc2_lut([[0.37] * 17] * 3, 4096), [[0.37] * 4096] * 3)
+        self.assertEqual(resample_mhc2_lut([[0.1], [0.2], [0.3]], 17), [[v] * 17 for v in (0.1, 0.2, 0.3)])
+        lut = [[0.1, 0.4, 0.9725], [0.02, 0.5, 1], [0.03, 0.6, 0.9812]]
+        self.assertEqual(resample_mhc2_lut(lut, 3), lut)
+        self.assertEqual(resample_mhc2_lut(lut, 1), [[ch[0]] for ch in lut])
+        output = resample_mhc2_lut([[0.2, 0.8]] * 3, 7)[0]
+        for i, value in enumerate(output):
+            self.assertAlmostEqual(value, 0.2 + i * 0.1)
+        for target in (0, 4097, 2.5):
+            with self.assertRaises(ValueError):
+                resample_mhc2_lut(lut, target)
+        for invalid in ([], [[], [], []], [[0], [0, 1], [0]], [[math.nan]] * 3, [[-0.01]] * 3, [[1.01]] * 3):
+            with self.assertRaises(ValueError):
+                resample_mhc2_lut(invalid, 17)
 
 
 class ProfileMakerTests(unittest.TestCase):
@@ -50,6 +151,55 @@ class ProfileMakerTests(unittest.TestCase):
             [mhc2["lut_r_off"], mhc2["lut_g_off"], mhc2["lut_b_off"]],
             [84, 100, 116],
         )
+
+    def test_import_resample_gui_and_arbitrary_profile_roundtrip(self):
+        self.app.reset_profile()
+        tag = next(tag for tag in self.app.tags if tag.signature == "MHC2")
+        self.app.selected_tag = tag
+        self.app.render_mhc2_workspace(tag)
+        self.addCleanup(self.app.reset_profile)
+        with tempfile.TemporaryDirectory() as directory, patch("mhc_icc_gui.messagebox.showinfo"):
+            for count in (1, 2, 3, 17, 65, 101, 257, 1000, 4095, 4096):
+                path = Path(directory) / "lut.csv"
+                source = [[0.01 + end * (i / max(1, count - 1)) ** 2 for i in range(count)] for end in (0.9625, 0.99, 0.9712)]
+                path.write_text("\n".join(",".join(str(ch[i]) for ch in source) for i in range(count)), encoding="utf-8")
+                with patch("mhc_icc_gui.filedialog.askopenfilename", return_value=str(path)):
+                    self.app.load_mhc2_lut()
+                self.root.update()  # Include queued selection events in precision checks.
+                self.assertEqual(self.app.mhc2_lut_values, source)
+                self.assertEqual(self.app.mhc2_entries.get(), str(count))
+                _, tags = parse_profile_bytes(self.app.build_profile_bytes())
+                parsed = self.app.parse_mhc2(next(t for t in tags if t.signature == "MHC2").data_bytes())
+                self.assertEqual(parsed["lut_entries"], count)
+                for actual, expected in zip(parsed["lut_values"], source):
+                    for a, b in zip(actual, expected):
+                        self.assertLessEqual(abs(a - b), 0.5 / 65536)
+            before = tag.data_bytes()
+            for target in (None, count):
+                with patch("mhc_icc_gui.simpledialog.askinteger", return_value=target):
+                    self.app.resample_mhc2_lut()
+                self.assertEqual(tag.data_bytes(), before)
+                self.assertEqual(self.app.mhc2_lut_values, source)
+            with patch("mhc_icc_gui.simpledialog.askinteger", return_value=101):
+                self.app.resample_mhc2_lut()
+            self.root.update()
+            self.assertEqual(self.app.mhc2_entries.get(), "101")
+            expected = resample_mhc2_lut(source, 101)
+            self.assertEqual(self.app.mhc2_lut_values, expected)
+            self.assertEqual(self.app.mhc2_preview_idx_vars[-1].get(), "100")
+            # Failed field validation must leave the LUT and serialized tag intact.
+            before = tag.data_bytes()
+            self.app.mhc2_peak.set("invalid")
+            with patch("mhc_icc_gui.messagebox.showerror"), patch("mhc_icc_gui.simpledialog.askinteger", return_value=65):
+                self.app.resample_mhc2_lut()
+            self.assertEqual(tag.data_bytes(), before)
+            self.assertEqual(self.app.mhc2_lut_values, expected)
+            self.assertEqual(self.app.mhc2_entries.get(), "101")
+            # Raw edits invalidate the float cache.
+            self.app.mhc2_lut_values = [[0.25, 0.75]] * 3
+            tag.data_hex = self.app.build_mhc2_bytes(0.2, 80, 2).hex().upper()
+            self.app.render_mhc2_workspace(tag)
+            self.assertEqual(self.app.mhc2_lut_values, [[0.25, 0.75]] * 3)
 
     def test_all_sample_profiles_parse(self):
         profiles = sorted(Path("samples").rglob("*.icc"))

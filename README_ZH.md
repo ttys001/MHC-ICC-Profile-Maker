@@ -8,7 +8,8 @@
 
 - 创建、载入、编辑、验证并以原子方式保存 ICC v4 显示器配置文件。
 - 通过专用工作区或原始十六进制数据编辑常见标签。
-- 从 CSV 导入 3×3/3×4 矩阵和 RGB 1D LUT。
+- 从 CSV 导入 3×3/3×4 矩阵；从 CSV、1D Cube 或 ColourSpace/Quantel TXT 导入 RGB 1D LUT。
+- 可选用纯 Python、保持曲线形状的 PCHIP 对 RGB 1D LUT 重采样。
 - 根据 W/R/G/B 四色测量数据，以最小二乘法计算校正矩阵。
 - 运行时不依赖第三方 Python 包，也不需要 NumPy。
 - 附带 SDR、HDR 配置文件及校准报告作为实际示例。
@@ -34,7 +35,7 @@ python -S -m unittest -v
 构建优化后的单文件 Windows 可执行程序：
 
 ```powershell
-python -m PyInstaller --noconfirm --clean --onefile --windowed --optimize 2 --name "MHC-ICC-Profile-Maker_v0.93" mhc_icc_gui.py
+python -m PyInstaller --noconfirm --clean --onefile --windowed --optimize 2 --name "MHC-ICC-Profile-Maker_v0.94" mhc_icc_gui.py
 ```
 
 ## 快速工作流程
@@ -44,13 +45,23 @@ python -m PyInstaller --noconfirm --clean --onefile --windowed --optimize 2 --na
 3. 保存配置文件。应用会更新创建时间、文件大小和 ICC Profile ID。
 4. 正式使用前，请在目标 Windows 系统和显示器上验证结果。
 
-## CSV 输入
+## 矩阵与 RGB 1D LUT 输入
 
 - 矩阵：三行数值，每行三列或四列。Windows 以 3×4 格式保存矩阵，但忽略第四列。
-- RGB 1D LUT：1–4096 行，每行包含 R、G、B 三列。
-- LUT 可使用归一化的 `0–1`，或整数范围 `0–255`、`0–1023`、`0–4095`、`0–65535`；应用会将其归一化到 `0–1`。
-- 支持逗号、分号和制表符分隔；以 `#` 开头的行为注释。
+- **Load RGB 3x1DLUT…** 支持 CSV、1D `.cube` 和 ColourSpace/Light Illusion Quantel 风格的 `.txt`，数据为 RGB 三列；拒绝 3D LUT。
+- MHC2 支持 **1–4096 的任意条目数**，不要求是 2 的幂。导入保留原始采样数量：101 行源数据就写入 101 个条目，不补点、不截断、不自动重采样；`Entries:` 保持只读。
+- CSV 可使用归一化的 `0–1`，或整数范围 `0–255`、`0–1023`、`0–4095`、`0–65535`；应用检测范围并归一化到 `0–1`。支持逗号、分号、制表符、UTF-8 BOM、空行及 `#` 注释。
+- Cube 必须包含与数据行数一致的 `LUT_1D_SIZE`，输出值须为 `0–1`；可带 `TITLE` 和注释。输入域须省略或为 `DOMAIN_MIN 0 0 0` / `DOMAIN_MAX 1 1 1`；其他输入域会被拒绝，不会用于缩放输出值。
+- Quantel TXT 允许数据表前的文字头。显式的 `max value 1023`、`max value 65535`、`bit depth 10` 或 `range 0 1023` 元数据（包括带 `#` 前缀的形式）决定归一化范围；无元数据时才采用 CSV 的范围检测。拒绝冲突元数据、无效数值及 `cube size`、`cube data`、`vertices`、`LUT3D` 等 3D 声明。
 - 矩阵计算器接受 xyY 或 XYZ 格式的 W/R/G/B 四行数据。
+
+### 可选重采样
+
+默认流程为 **导入 → 保留源采样点 → 按原始条目数写入 MHC2**。只有主动点击 **Resample 1DLUT…**，才会将当前 LUT 转换为 1–4096 范围内的目标条目数。4096 只是可选上限，并非要求；导入从不自动重采样。
+
+PCHIP 仅使用标准库，保持局部曲线形状与单调区间，避免普通三次样条振铃，也不会自动修复源曲线中的非单调段。目标至少为两点时，精确保留源黑白端点，包括低于 1 的白平衡校准值。单点源扩展为常量，两点源采用线性插值。目标为一点时保留源首点（无法同时保留两个端点）；目标数量不变时不改变数值。
+
+解析和重采样在工作区保留 Python float 精度，仅在 ICC 序列化时量化为 s15Fixed16；重新打开已保存的配置文件时读取的是量化值。可据此比较原始 LUT 与主动 PCHIP 重采样后的 LUT 在 Windows/硬件管线中的结果；软件测试不能代替显示器实测。
 
 ## 默认配置文件
 
@@ -67,7 +78,7 @@ python -m PyInstaller --noconfirm --clean --onefile --windowed --optimize 2 --na
 | 文本 | `Copyright (C) User.` 和 `Default Device Profile` |
 | MSCA | `{'Appversion':'1.0.152.0','D65Adapted':True}` |
 
-MSCA 中的应用版本已于 2026-07-30 对照 Microsoft Store 实时目录核验，与 Windows HDR Calibration `1.0.152.0` 一致。MSCA 是 Microsoft 私有标签；只修改版本字符串并不能复现另一个应用版本的行为。
+MSCA 中的应用版本已于 2026-09-20 重新对照 [Microsoft Store 实时目录](https://displaycatalog.mp.microsoft.com/v7.0/products/9N7F2SM5D1LR?market=US&languages=en-US) 核验。当前列出的 Windows HDR Calibration 安装包仍为 `1.0.152.0`，预设字段已是当前版本。MSCA 是 Microsoft 私有标签；只修改版本字符串并不能复现另一个应用版本的行为。
 
 ## MHC2 关键规则
 
