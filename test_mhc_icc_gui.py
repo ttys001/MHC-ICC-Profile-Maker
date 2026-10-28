@@ -21,6 +21,33 @@ from mhc_icc_gui import (
 )
 
 
+def reference_profile_id(profile):
+    # ICC.1:2022 section 7.2.18; assemble independently of the production helper.
+    return hashlib.md5(
+        profile[:44] + bytes(4) + profile[48:64] + bytes(4)
+        + profile[68:84] + bytes(16) + profile[100:],
+        usedforsecurity=False,
+    ).digest()
+
+
+class ProfileIdTests(unittest.TestCase):
+    def test_profile_id_ignores_flags_intent_and_existing_id(self):
+        profile = bytearray(range(256))
+        expected = bytes.fromhex("9ed3b54705c20a66fe31854d2f7f628e")
+        self.assertEqual(reference_profile_id(profile), expected)
+        for flags in range(4):
+            for intent in range(4):
+                with self.subTest(flags=flags, intent=intent):
+                    profile[44:48] = flags.to_bytes(4, "big")
+                    profile[64:68] = intent.to_bytes(4, "big")
+                    profile[84:100] = bytes([flags * 4 + intent]) * 16
+                    original = bytes(profile)
+                    self.assertEqual(calculate_profile_id(profile), expected)
+                    self.assertEqual(profile, original)
+        profile[128] ^= 1
+        self.assertNotEqual(calculate_profile_id(profile), expected)
+
+
 class LutTests(unittest.TestCase):
     def read_fixture(self, text, suffix):
         with tempfile.TemporaryDirectory() as directory:
@@ -235,7 +262,7 @@ class ProfileMakerTests(unittest.TestCase):
         profile = self.app.build_profile_bytes()
         header, tags = parse_profile_bytes(profile)
         self.assertEqual(int(header["size"], 16), len(profile))
-        self.assertEqual(profile[84:100], calculate_profile_id(profile))
+        self.assertEqual(profile[84:100], reference_profile_id(profile))
         self.assertEqual(len({tag.signature for tag in tags}), len(tags))
 
         by_signature = {tag.signature: tag for tag in tags}
@@ -252,6 +279,28 @@ class ProfileMakerTests(unittest.TestCase):
             [mhc2["lut_r_off"], mhc2["lut_g_off"], mhc2["lut_b_off"]],
             [84, 100, 116],
         )
+
+    def test_saved_profile_preserves_flags_and_rendering_intent(self):
+        self.app.reset_profile()
+        self.addCleanup(self.app.reset_profile)
+        for mode in ("human", "hex"):
+            self.app.header_mode = mode
+            self.app.render_header_fields()
+            for flags in range(4):
+                for intent in range(4):
+                    with self.subTest(mode=mode, flags=flags, intent=intent):
+                        if mode == "human":
+                            embedded, independent = self.app.header_vars["flags"]
+                            embedded.set("Embedded" if flags & 1 else "Not embedded")
+                            independent.set("Not independent" if flags & 2 else "Independent")
+                            self.app.header_vars["rendering_intent"].set(str(intent))
+                        else:
+                            self.app.header_vars["flags"].set(f"{flags:08X}")
+                            self.app.header_vars["rendering_intent"].set(f"{intent:08X}")
+                        profile = self.app.build_profile_bytes()
+                        self.assertEqual(int.from_bytes(profile[44:48], "big"), flags)
+                        self.assertEqual(int.from_bytes(profile[64:68], "big"), intent)
+                        self.assertEqual(profile[84:100], reference_profile_id(profile))
 
     def test_import_resample_gui_and_arbitrary_profile_roundtrip(self):
         self.app.reset_profile()
@@ -307,7 +356,11 @@ class ProfileMakerTests(unittest.TestCase):
         self.assertTrue(profiles)
         for path in profiles:
             with self.subTest(path=path):
-                _, tags = parse_profile_bytes(path.read_bytes())
+                data = path.read_bytes()
+                # Local-only fixtures retain their original third-party IDs.
+                if not path.is_relative_to("samples/sample"):
+                    self.assertEqual(data[84:100], reference_profile_id(data))
+                _, tags = parse_profile_bytes(data)
                 mhc2 = next(tag for tag in tags if tag.signature == "MHC2")
                 self.app.parse_mhc2(mhc2.data_bytes())
 
@@ -352,7 +405,7 @@ class ProfileMakerTests(unittest.TestCase):
                 rebuilt = self.app.build_profile_bytes()
                 _, rebuilt_tags = parse_profile_bytes(rebuilt)
                 self.assertEqual({tag.signature: tag.data_bytes() for tag in rebuilt_tags}, original)
-                self.assertEqual(rebuilt[84:100], calculate_profile_id(rebuilt))
+                self.assertEqual(rebuilt[84:100], reference_profile_id(rebuilt))
         self.app.reset_profile()
 
     def test_invalid_matrix_and_hex_are_rejected(self):
@@ -425,7 +478,7 @@ class ProfileMakerTests(unittest.TestCase):
             self.root.withdraw()
             self.app.reset_profile()
 
-    def test_v092_profile_bytes_for_defaults_and_csv(self):
+    def test_v092_profile_bytes_with_corrected_id_for_defaults_and_csv(self):
         class FixedDateTime(datetime):
             @classmethod
             def now(cls, tz=None):
@@ -438,7 +491,7 @@ class ProfileMakerTests(unittest.TestCase):
         self.app.reset_profile()
         self.assertEqual(
             profile_sha256(),
-            "030dae22ae3c3b7247b0b818bb4be4d87d8d03208686502e45fd1170bef2e148",
+            "4fa2ddb2b99de14239b1651af28f501b6820cd3f292f4e6b5f236a37a06da233",
         )
 
         fixture = Path("samples/simple example")
@@ -459,7 +512,7 @@ class ProfileMakerTests(unittest.TestCase):
         )
         self.assertEqual(
             profile_sha256(),
-            "c6c671cfbc370c8d222b4b41cd826cea0a6bdac3621937b725172d4afc5e2f71",
+            "e2bfb25cac83e183bfc9a4cf832db16c2e7932a2f20e0178496e79463b6243d3",
         )
         self.app.reset_profile()
 

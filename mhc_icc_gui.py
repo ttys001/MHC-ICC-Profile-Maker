@@ -10,7 +10,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 from typing import Dict, List, Tuple
 
-APP_VERSION = "0.94.1"
+APP_VERSION = "0.94.2"
 
 
 DEVICE_CLASSES: Dict[str, str] = {
@@ -508,6 +508,8 @@ def calculate_profile_id(profile: bytes) -> bytes:
     if len(profile) < 100:
         raise ValueError("Profile is too small to hash.")
     digest_input = bytearray(profile)
+    digest_input[44:48] = b"\x00" * 4
+    digest_input[64:68] = b"\x00" * 4
     digest_input[84:100] = b"\x00" * 16
     return hashlib.md5(digest_input, usedforsecurity=False).digest()
 
